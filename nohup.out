@@ -1,0 +1,19 @@
+[2024-07-08 09:04:33.565] [info] Using configuration file /home/tim/.config/waybar/config
+[2024-07-08 09:04:33.568] [info] Unable to receive desktop appearance: GDBus.Error:org.freedesktop.DBus.Error.UnknownMethod: No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop
+[2024-07-08 09:04:33.568] [info] Using CSS file /home/tim/.config/waybar/style.css
+[2024-07-08 09:04:33.575] [info] Hyprland IPC starting
+[2024-07-08 09:04:33.578] [info] Loading persistent workspaces from Waybar config
+[2024-07-08 09:04:33.578] [info] Loading persistent workspaces from Hyprland workspace rules
+[2024-07-08 09:04:33.582] [info] Loading persistent workspaces from Waybar config
+[2024-07-08 09:04:33.582] [info] Loading persistent workspaces from Hyprland workspace rules
+[2024-07-08 09:04:34.143] [warning] Requested height: 20 is less than the minimum height: 33 required by the modules
+[2024-07-08 09:04:34.143] [info] Bar configured (width: 1920, height: 33) for output: DP-12
+[2024-07-08 09:04:34.144] [warning] Requested height: 20 is less than the minimum height: 33 required by the modules
+[2024-07-08 09:04:34.144] [info] Bar configured (width: 2560, height: 33) for output: eDP-2
+
+** (waybar:770648): WARNING **: 09:04:34.206: Status Notifier Item with bus name ':1.48' and object path '/org/ayatana/NotificationItem/steam' is already registered
+
+** (waybar:770648): WARNING **: 09:04:35.121: Status Notifier Item with bus name ':1.48' and object path '/org/ayatana/NotificationItem/steam' is already registered
+[2024-07-08 09:04:35.269] [info] Bar configured (width: 2596, height: 33) for output: eDP-2
+[2024-07-08 09:05:10.053] [info] Bar configured (width: 2560, height: 33) for output: eDP-2
+[2024-07-08 09:05:11.867] [info] Bar configured (width: 2596, height: 33) for output: eDP-2
