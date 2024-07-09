@@ -8,9 +8,23 @@ use async_std::{
 };
 use std::env::var;
 
+pub trait EventData: Clone {
+    fn parse(data: &str) -> Option<Self> where Self: Sized;
+}
+
 #[derive(Clone)]
 pub struct ActiveWindow {
     pub title: String,
+}
+
+impl EventData for ActiveWindow {
+    fn parse(data: &str) -> Option<Self> {
+        let (_class_name, title) = data.split_once(",")?;
+        
+        Some(Self {
+            title: title.to_owned()
+        })
+    }
 }
 
 pub struct HyprlandEvents {
@@ -18,27 +32,35 @@ pub struct HyprlandEvents {
     event_task: JoinHandle<()>,
 }
 
-struct EventStreamData<T> {
+struct EventStreamData<T: EventData> {
     current_value: Mutex<(i64, T)>,
 
     trigger: Condvar,
 }
 
-impl<T> EventStreamData<T> {
+impl<T: EventData> EventStreamData<T> {
     fn new(initial_value: T) -> Self {
         Self {
             current_value: Mutex::new((0, initial_value)),
             trigger: Condvar::new(),
         }
     }
+
+    async fn update(&self, new_data: &str) {
+        if let Some(new_value) = T::parse(new_data) {
+            let mut data_lock = self.current_value.lock().await;
+            *data_lock = (data_lock.0 + 1, new_value);
+            self.trigger.notify_all();
+        }
+    }
 }
 
-pub struct EventStream<T: Clone> {
+pub struct EventStream<T: EventData> {
     data: Arc<EventStreamData<T>>,
     last_seen_iteration: i64,
 }
 
-impl<T: Clone> EventStream<T> {
+impl<T: EventData> EventStream<T> {
     fn new(data: Arc<EventStreamData<T>>) -> Self {
         Self {
             data,
@@ -81,16 +103,11 @@ impl HyprlandEvents {
                 let mut lines = BufReader::new(event_stream).lines();
 
                 while let Some(Ok(line)) = lines.next().await {
-                    if line.starts_with("activewindow>>") {
-                        let data = line.split_once(">>").unwrap().1;
-                        let (_window_class, title) = data.split_once(',').unwrap_or(("", ""));
-                        let active_window = ActiveWindow {
-                            title: title.to_owned(),
-                        };
-
-                        let mut data_lock = listeners.active_window.current_value.lock().await;
-                        *data_lock = (data_lock.0 + 1, active_window);
-                        listeners.active_window.trigger.notify_all();
+                    if let Some((command, data)) = line.split_once(">>") {
+                        match command {
+                          "activewindow" => listeners.active_window.update(data).await,
+                          _ => ()
+                        }
                     }
                 }
             }),
