@@ -1,0 +1,22 @@
+{
+    "rust-analyzer.cargo.buildScripts.overrideCommand": [
+        "./cargo-wrapper.sh",
+        "check",
+        "--quiet",
+        "--workspace",
+        "--message-format=json",
+        "--all-targets",
+    ],
+    "rust-analyzer.check.overrideCommand": [
+        "./cargo-wrapper.sh",
+        "check",
+        "--message-format=json",
+    ],
+    "rust-analyzer.runnables.command": "./cargo-wrapper.sh",
+    "rust-analyzer.debug.openDebugPane": true,
+    "lldb.cargo": "./cargo-wrapper.sh",
+    "rust-analyzer.rustfmt.overrideCommand": [
+        "./env-wrapper.sh",
+        "rustfmt",
+    ],
+}

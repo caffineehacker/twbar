@@ -7,6 +7,8 @@ edition = "2021"
 gtk4 = "*"
 gtk4-layer-shell = "*"
 gio = "*"
-hyprland = { git = "https://github.com/hyprland-community/hyprland-rs", branch = "master" }
-async-std = "*"
 async-channel = "*"
+
+[dependencies.async-std]
+version = "*"
+features = ["attributes", "unstable"]
