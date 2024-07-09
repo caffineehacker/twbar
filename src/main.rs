@@ -14,7 +14,7 @@ fn bar_window(app: &Application, hyprland_events: Arc<HyprlandEvents>) -> Applic
     let window = ApplicationWindow::new(app);
 
     window.init_layer_shell();
-    window.set_layer(Layer::Overlay);
+    window.set_layer(Layer::Top);
     window.auto_exclusive_zone_enable();
 
     window.set_anchor(Edge::Left, true);
