@@ -18,5 +18,9 @@
     "rust-analyzer.rustfmt.overrideCommand": [
         "./env-wrapper.sh",
         "rustfmt",
+        "--edition 2021",
+    ],
+    "rust-analyzer.linkedProjects": [
+        "./Cargo.toml"
     ],
 }

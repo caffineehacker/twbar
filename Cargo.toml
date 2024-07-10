@@ -8,6 +8,8 @@ gtk4 = "*"
 gtk4-layer-shell = "*"
 gio = "*"
 async-channel = "*"
+serde_json = "*"
+serde = { version = "*", features = ["derive"] }
 
 [dependencies.async-std]
 version = "*"

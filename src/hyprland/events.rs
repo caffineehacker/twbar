@@ -1,12 +1,11 @@
 use async_std::{
-    io::{self, prelude::BufReadExt, BufReader},
-    os::unix::net::UnixStream,
-    path::PathBuf,
+    io::{prelude::BufReadExt, BufReader},
     stream::StreamExt,
-    sync::{Arc, Condvar, Mutex},
+    sync::{Arc, Condvar, Mutex, Weak},
     task::{self, JoinHandle},
 };
-use std::env::var;
+
+use super::utils::Utils;
 
 pub trait EventData: Clone {
     fn parse(data: &str) -> Option<Self> where Self: Sized;
@@ -27,26 +26,21 @@ impl EventData for ActiveWindow {
     }
 }
 
-pub struct HyprlandEvents {
-    listeners: Arc<HyperlandEventListeners>,
-    event_task: JoinHandle<()>,
-}
-
-struct EventStreamData<T: EventData> {
+pub(super) struct EventStreamData<T: EventData> {
     current_value: Mutex<(i64, T)>,
 
     trigger: Condvar,
 }
 
 impl<T: EventData> EventStreamData<T> {
-    fn new(initial_value: T) -> Self {
+    pub fn new(initial_value: T) -> Self {
         Self {
             current_value: Mutex::new((0, initial_value)),
             trigger: Condvar::new(),
         }
     }
 
-    async fn update(&self, new_data: &str) {
+    pub async fn update(&self, new_data: &str) {
         if let Some(new_value) = T::parse(new_data) {
             let mut data_lock = self.current_value.lock().await;
             *data_lock = (data_lock.0 + 1, new_value);
@@ -61,7 +55,7 @@ pub struct EventStream<T: EventData> {
 }
 
 impl<T: EventData> EventStream<T> {
-    fn new(data: Arc<EventStreamData<T>>) -> Self {
+    pub(super) fn new(data: Arc<EventStreamData<T>>) -> Self {
         Self {
             data,
             last_seen_iteration: 0,
@@ -84,28 +78,46 @@ impl<T: EventData> EventStream<T> {
     }
 }
 
-struct HyperlandEventListeners {
+pub struct HyprlandEvents {
     active_window: Arc<EventStreamData<ActiveWindow>>,
+    
+    event_task: JoinHandle<()>,
 }
 
 impl HyprlandEvents {
-    pub async fn new() -> Self {
-        let listeners = Arc::new(HyperlandEventListeners {
-            active_window: Arc::new(EventStreamData::new(ActiveWindow {
+    pub async fn instance() -> Arc<Self> {
+        static INSTANCE: Mutex<Weak<HyprlandEvents>> = Mutex::new(Weak::new());
+        
+        let mut mutex_guard = INSTANCE.lock().await;
+        match mutex_guard.upgrade() {
+            Some(instance) => instance,
+            None => {
+                let instance = Arc::new(Self::new().await);
+                *mutex_guard = Arc::downgrade(&instance);
+                instance
+            }
+        }
+    }
+
+    async fn new() -> Self {
+        let active_window = Arc::new(EventStreamData::new(ActiveWindow {
                 title: "".to_owned(),
-            })),
-        });
+            }));
+        let active_window_weak = Arc::downgrade(&active_window);
+
         HyprlandEvents {
-            listeners: listeners.clone(),
+            active_window,
 
             event_task: task::spawn(async move {
-                let event_stream = Self::create_event_socket().await.unwrap();
+                let event_stream = Utils::create_event_socket().await.unwrap();
                 let mut lines = BufReader::new(event_stream).lines();
 
                 while let Some(Ok(line)) = lines.next().await {
                     if let Some((command, data)) = line.split_once(">>") {
+                        // We unwrap because we're ok with failing as it means the instance is done and the thread should die.
+                        // TODO: Handle the unwrap better so we don't log a panic.
                         match command {
-                          "activewindow" => listeners.active_window.update(data).await,
+                          "activewindow" => active_window_weak.upgrade().unwrap().update(data).await,
                           _ => ()
                         }
                     }
@@ -114,33 +126,7 @@ impl HyprlandEvents {
         }
     }
 
-    async fn create_event_socket() -> Result<UnixStream, io::Error> {
-        let instance = match var("HYPRLAND_INSTANCE_SIGNATURE") {
-            Ok(var) => var,
-            Err(_) => {
-                panic!("Could not find HYPRLAND_INSTANCE_SIGNATURE variable, is Hyprland running?")
-            }
-        };
-
-        let xdg_runtime_dir = match var("XDG_RUNTIME_DIR") {
-            Ok(var) => var,
-            Err(_) => {
-                panic!("Could not find XDG_RUNTIME_DIR variable")
-            }
-        };
-
-        let path = PathBuf::from(xdg_runtime_dir)
-            .join("hypr")
-            .join(instance)
-            .join(".socket2.sock");
-        if !path.exists().await {
-            panic!("Could not find Hyprland socket path");
-        }
-
-        UnixStream::connect(path).await
-    }
-
-    pub async fn get_active_window_emitter(&self) -> EventStream<ActiveWindow> {
-        EventStream::new(self.listeners.active_window.clone())
+    pub fn get_active_window_emitter(&self) -> EventStream<ActiveWindow> {
+        EventStream::new(self.active_window.clone())
     }
 }
