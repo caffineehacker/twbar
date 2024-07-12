@@ -1,15 +1,23 @@
-use async_std::{sync::{Arc, Mutex, Weak}, task};
+use async_channel::Sender;
+use async_std::{stream::StreamExt, sync::{Arc, Mutex, Weak}, task};
+use futures::{select, future::{select, Either}};
 use serde::Deserialize;
 
-use super::{commands::HyprlandCommands, events::{EventData, EventStream, EventStreamData}};
+use super::{commands::HyprlandCommands, events::{EventData, HyprlandEvent, HyprlandEvents, LatestEventValue, LatestEventValueListener}, wayland_manager::{ExtForeignToplevel, WaylandManager}};
 
-#[derive(Deserialize, Clone)]
+pub enum WindowEvent {
+    NewWindow(HyprlandWindow),
+    ModifiedWindow(HyprlandWindow),
+    ClosedWindow(String),
+}
+
+#[derive(Deserialize, Clone, Default)]
 pub struct HyprlandWorkspace {
     pub id: i32,
     pub name: String,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Default)]
 pub struct HyprlandWindow {
     pub address: String,
     pub mapped: bool,
@@ -41,16 +49,32 @@ pub struct HyprlandWindow {
     pub focus_history_id: i32,
 }
 
+impl HyprlandWindow {
+    fn update_from(&mut self, foreign_toplevel: &ExtForeignToplevel) {
+        self.title = foreign_toplevel.title.clone();
+    }
+}
+
+impl From<ExtForeignToplevel> for HyprlandWindow {
+    fn from(value: ExtForeignToplevel) -> Self {
+        let mut new_window = Self::default();
+        new_window.update_from(&value);
+        new_window
+    }
+}
+
 impl EventData for Vec<HyprlandWindow> {
     fn parse(data: &str) -> Option<Self> where Self: Sized {
         // TODO: Handle errors without panic
-        let window_data = serde_json::from_str::<Vec<HyprlandWindow>>(data).unwrap(); // .map_or(None, |windows| Some(windows))
+        let window_data = serde_json::from_str::<Vec<HyprlandWindow>>(data).unwrap();
         Some(window_data)
     }
 }
 
 pub struct HyprlandWindows {
-    windows: Arc<EventStreamData<Vec<HyprlandWindow>>>,
+    windows: Arc<LatestEventValue<Vec<HyprlandWindow>>>,
+    event_listeners: Arc<Mutex<Vec<Sender<WindowEvent>>>>,
+    wayland_manager: Arc<WaylandManager>,
 }
 
 impl HyprlandWindows {
@@ -69,19 +93,78 @@ impl HyprlandWindows {
     }
 
     async fn new() -> Arc<Self> {
-        let windows = Arc::new(EventStreamData::new(vec![]));
+        let windows = Arc::new(LatestEventValue::new());
 
         let instance = Arc::new(Self {
-            windows
+            windows,
+            event_listeners: Arc::new(Mutex::new(Vec::new())),
+            wayland_manager: WaylandManager::instance().await,
         });
 
         {
             let instance = instance.clone();
             task::spawn(async move {
+                let mut events = HyprlandEvents::instance().await.get_event_stream().await;
+
                 instance.force_refresh().await;
 
-                // TODO: Listen on HyprlandEvents to update the window list
-                loop {}
+                loop {
+                    match events.recv().await.unwrap() {
+                        HyprlandEvent::ActiveWindow(w) => {},
+                        HyprlandEvent::FocusedMon(_) => {},
+                        HyprlandEvent::Workspace(_) => {},
+                        HyprlandEvent::WorkspaceV2(_) => {},
+                    }
+                }
+            });
+        }
+
+        {
+            let instance = instance.clone();
+            task::spawn(async move {
+                let wayland_manager = WaylandManager::instance().await;
+                let (_current_windows, mut wayland_window_listener) = wayland_manager.create_window_listener().await;
+
+                loop {
+                    match wayland_window_listener.recv().await.unwrap() {
+                        super::wayland_manager::WaylandWindowEvent::UpdatedWindowExt(updated_window) => {
+                            instance.windows.update_fn(|current_windows| {
+                                let updated_windows: Vec<HyprlandWindow> = current_windows.clone().into_iter().map(|mut w| {
+                                    // Address is formatted with {:x} and identifier is ->{:016x}
+                                    if updated_window.identifier.split_once("->").unwrap().1.ends_with(w.address.strip_prefix("0x").unwrap_or("FFFFFFFFFFFFFFFFFFF")) {
+                                        w.update_from(&updated_window);
+                                    }
+                                    w
+                                }).collect();
+
+                                Some(updated_windows)
+                            }).await;
+                        },
+                        super::wayland_manager::WaylandWindowEvent::NewWindowExt(new_window) => {
+                            instance.windows.update_fn(|current_windows| {
+                                // While this is a new window event, it may have already been added by they Hyprland events
+                                if !current_windows.iter().any(|w| new_window.identifier.split_once("->").unwrap().1.ends_with(w.address.strip_prefix("0x").unwrap_or("FFFFFFFFFFFFFFFFFFFFFFFFFFF"))) {
+                                    let mut updated_windows = current_windows.clone();
+                                    updated_windows.push(new_window.into());
+                                    Some(updated_windows)
+                                } else {
+                                    None
+                                }
+                            }).await;
+                        },
+                        super::wayland_manager::WaylandWindowEvent::RemovedWindowExt(deleted_window) => {
+                            instance.windows.update_fn(|current_windows| {
+                                let updated_windows: Vec<HyprlandWindow> = current_windows.clone().into_iter().filter(|w| {
+                                    // Address is formatted with {:x} and identifier is ->{:016x}
+                                    !deleted_window.identifier.split_once("->").unwrap().1.ends_with(w.address.strip_prefix("0x").unwrap_or("FFFFFFFFFFFFFFFFFFF"))
+                                }).collect();
+
+                                Some(updated_windows)
+                            }).await;
+                        },
+                        _ => {},
+                    }
+                }
             });
         }
 
@@ -90,10 +173,10 @@ impl HyprlandWindows {
 
     pub async fn force_refresh(&self) {
         let commands = HyprlandCommands::instance().await;
-        self.windows.update(&commands.send_command("j/clients").await).await;
+        self.windows.update(Vec::<HyprlandWindow>::parse(&commands.send_command("j/clients").await).unwrap()).await;
     }
 
-    pub fn get_windows_update_emitter(&self) -> EventStream<Vec<HyprlandWindow>> {
-        EventStream::new(self.windows.clone())
+    pub fn get_windows_update_emitter(&self) -> LatestEventValueListener<Vec<HyprlandWindow>> {
+        LatestEventValueListener::new(self.windows.clone())
     }
 }

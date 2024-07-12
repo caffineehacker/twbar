@@ -11,21 +11,24 @@ mod hyprland;
 use hyprland::events::HyprlandEvents;
 use hyprland::windows::HyprlandWindows;
 
-fn taskbar_widget() -> Widget {
+fn taskbar_widget(monitor: i32) -> Widget {
     let container = gtk::Box::new(Orientation::Horizontal, 8);
 
     glib::spawn_future_local(clone!(@weak container => async move {
         let hyprland_windows = HyprlandWindows::instance().await;
         let mut emitter = hyprland_windows.get_windows_update_emitter();
-        //hyprland_windows.force_refresh();
 
         loop {
             let mut windows = emitter.next().await;
-            println!("Got {0} windows", windows.len());
+            println!("Windows updated event!");
             windows.sort_by(|a, b| a.workspace.id.cmp(&b.workspace.id));
 
+            while let Some(child) = container.last_child() {
+                container.remove(&child);
+            }
+
             // FIXME: CHECK FOR EXISTING CHILDREN AND ADD / REMOVE / REORDER
-            for window in windows {
+            for window in windows.iter().filter(|x| x.monitor == monitor) {
                 let button = Button::new();
                 button.set_label(&window.title);
                 container.append(&button);
@@ -52,7 +55,7 @@ fn bar_window(app: &Application, hyprland_events: Arc<HyprlandEvents>) -> Applic
 
     let label = Label::new(Some("Window Label"));
     hbox.append(&label);
-    hbox.append(&taskbar_widget());
+    hbox.append(&taskbar_widget(0));
     window.set_child(Some(&hbox));
 
     glib::spawn_future_local(clone!(@weak label, @strong hyprland_events => async move {

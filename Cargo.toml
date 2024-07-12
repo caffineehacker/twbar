@@ -10,6 +10,11 @@ gio = "*"
 async-channel = "*"
 serde_json = "*"
 serde = { version = "*", features = ["derive"] }
+async-broadcast = "*"
+wayland-protocols-wlr = { version = "*", features = ["client"] }
+wayland-client = "*"
+wayland-protocols = { version = "*", features = ["client", "staging"] }
+futures = "*"
 
 [dependencies.async-std]
 version = "*"
