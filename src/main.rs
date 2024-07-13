@@ -28,9 +28,15 @@ fn taskbar_widget(monitor: i32) -> Widget {
             }
 
             // FIXME: CHECK FOR EXISTING CHILDREN AND ADD / REMOVE / REORDER
-            for window in windows.iter().filter(|x| x.monitor == monitor) {
+            for window in windows.into_iter().filter(|x| x.monitor == monitor) {
                 let button = Button::new();
                 button.set_label(&window.title);
+                button.connect_clicked(move |_button| {
+                    let window = window.clone();
+                    glib::spawn_future_local(async move {
+                        window.activate().await;
+                    });
+                });
                 container.append(&button);
             }
         }

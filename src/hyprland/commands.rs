@@ -47,4 +47,8 @@ impl HyprlandCommands {
             Ok(response)
         }).await.unwrap()
     }
+
+    pub async fn set_active_window(&self, window_address: &str) {
+        self.send_command(&format!("dispatch focuswindow address:{}", window_address)).await;
+    }
 }

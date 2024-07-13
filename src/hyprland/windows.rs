@@ -51,7 +51,12 @@ pub struct HyprlandWindow {
 
 impl HyprlandWindow {
     fn update_from(&mut self, foreign_toplevel: &ExtForeignToplevel) {
+        self.address = "0x".to_owned() + foreign_toplevel.identifier.split_once("->").unwrap().1.strip_prefix("0").unwrap();
         self.title = foreign_toplevel.title.clone();
+    }
+
+    pub async fn activate(&self) {
+        HyprlandCommands::instance().await.set_active_window(&self.address).await;
     }
 }
 
