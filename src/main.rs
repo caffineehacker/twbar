@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use glib::clone;
@@ -7,37 +8,164 @@ use gtk4::{self as gtk, Button, Label, Orientation, Widget};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 
 mod hyprland;
+mod xdg_applications;
 
+use hyprland::commands::HyprlandCommands;
 use hyprland::events::HyprlandEvents;
-use hyprland::windows::HyprlandWindows;
+use hyprland::windows::{HyprlandWindow, HyprlandWindows};
+use xdg_applications::XdgApplicationsCache;
+
+fn taskbar_button(window: &HyprlandWindow, cache: &XdgApplicationsCache) -> Button {
+    let button = Button::new();
+    button.set_focusable(false);
+
+    assert!(!window.address.is_empty());
+    let address = window.address.clone();
+    button.connect_clicked(move |_button| {
+        let address = address.clone();
+        glib::spawn_future_local(async move {
+            HyprlandCommands::set_active_window(&address).await;
+        });
+    });
+    update_taskbar_button(&button, window, cache);
+
+    button
+}
+
+fn update_taskbar_button(button: &Button, window: &HyprlandWindow, cache: &XdgApplicationsCache) {
+    if !window.title.is_empty() {
+        // Any tooltip currently seg faults on hover for some reason...
+        //button.set_tooltip_text(Some(&window.title));
+    }
+
+    let mut app_info = cache.get_application_by_class(&window.initial_class);
+    if app_info.is_none() {
+        app_info = cache.get_application_by_class(&window.class);
+    }
+
+    if app_info.is_some() {
+        let app_info = app_info.unwrap();
+        let icon = app_info.string("Icon");
+        if icon.is_some() {
+            let button_box = gtk::Box::new(Orientation::Horizontal, 8);
+            let image = gtk::Image::new();
+            image.set_icon_name(icon.unwrap().as_str().into());
+            button_box.append(&image);
+            let label = Label::new(app_info.name().as_str().into());
+            button_box.append(&label);
+            button.set_child(Some(&button_box));
+        } else {
+            button.set_label(app_info.name().as_str());
+        }
+    } else {
+        button.set_label(&window.initial_class);
+    }
+}
 
 fn taskbar_widget(monitor: i32) -> Widget {
     let container = gtk::Box::new(Orientation::Horizontal, 8);
 
     glib::spawn_future_local(clone!(@weak container => async move {
+        let application_cache = XdgApplicationsCache::new();
         let hyprland_windows = HyprlandWindows::instance().await;
-        let mut emitter = hyprland_windows.get_windows_update_emitter();
+        let (mut current_windows, mut emitter) = hyprland_windows.get_window_event_emitter().await;
+
+        let mut buttons = Vec::new();
+        current_windows.sort_by(|a, b| a.workspace.id.cmp(&b.workspace.id));
+
+        for window in current_windows.into_iter().filter(|w| w.monitor == monitor) {
+            println!("Adding current window: {:?}", window);
+            let button = taskbar_button(&window, &application_cache);
+            container.append(&button);
+            buttons.push((window, button.downgrade()));
+        }
 
         loop {
-            let mut windows = emitter.next().await;
-            println!("Windows updated event!");
-            windows.sort_by(|a, b| a.workspace.id.cmp(&b.workspace.id));
-
-            while let Some(child) = container.last_child() {
-                container.remove(&child);
+            let event = emitter.recv().await;
+            if event.is_err() {
+                panic!("ERROR WITH EVENT EMITTER: {}", event.err().unwrap());
             }
+            let event = event.unwrap();
+            println!("Windows updated event! {:?}", event);
 
-            // FIXME: CHECK FOR EXISTING CHILDREN AND ADD / REMOVE / REORDER
-            for window in windows.into_iter().filter(|x| x.monitor == monitor) {
-                let button = Button::new();
-                button.set_label(&window.title);
-                button.connect_clicked(move |_button| {
-                    let window = window.clone();
-                    glib::spawn_future_local(async move {
-                        window.activate().await;
-                    });
-                });
-                container.append(&button);
+            match event {
+                hyprland::windows::WindowEvent::ClosedWindow(addr) => {
+                    println!("Running close window for {}", addr);
+                    'button_search: for index in 0..buttons.len() {
+                        let (window, button) = &buttons.get(index).unwrap();
+                        if window.address == addr {
+                            let button = button.upgrade();
+                            if button.is_some() {
+                                container.remove(&button.unwrap());
+                            } else {
+                                println!("Failed to upgrade button for removal!");
+                            }
+                            buttons.remove(index);
+                            break 'button_search;
+                        }
+
+                        if index == buttons.len() - 1 {
+                            println!("close window failed to find button {}", addr);
+                        }
+                    }
+                },
+                hyprland::windows::WindowEvent::ModifiedWindow(w) => {
+                    // TODO: Handle moving the button when it changes workspaces
+                    let maybe_button = buttons.iter_mut().enumerate().filter(|(_i, (window, _))| window.address == w.address).next();
+                    if maybe_button.is_some() {
+                        let (index, (window, button)) = maybe_button.unwrap();
+                        let button = button.upgrade();
+                        if button.is_some() {
+                            update_taskbar_button(&button.unwrap(), &w, &application_cache);
+                            *window = w;
+                        } else {
+                            buttons.remove(index);
+                        }
+                    }
+                },
+                hyprland::windows::WindowEvent::NewWindow(w) => {
+                    println!("New window");
+                    if w.monitor != monitor {
+                        println!("Did not match monitor");
+                        continue;
+                    }
+                    if !buttons.iter().any(|(window, _button)| window.address == w.address) {
+                        if buttons.len() == 0 {
+                            let button = taskbar_button(&w, &application_cache);
+                            buttons.insert(0, (w, button.downgrade()));
+                            container.prepend(&button);
+                            continue;
+                        }
+                        for index in 0..buttons.len() {
+                            let (existing_window, existing_button) = &buttons[index];
+                            if existing_window.workspace.id == w.workspace.id {
+                                let existing_button = existing_button.upgrade().unwrap();
+                                let button = taskbar_button(&w, &application_cache);
+                                buttons.insert(index, (w, button.downgrade()));
+                                if index == 0 {
+                                    container.prepend(&button);
+                                } else {
+                                    container.insert_child_after(&button, Some(&existing_button));
+                                }
+
+                                break;
+                            }
+                        }
+                    } else {
+                        // Treat it like an update event
+                        let maybe_button = buttons.iter_mut().enumerate().filter(|(_i, (window, _))| window.address == w.address).next();
+                        if maybe_button.is_some() {
+                            let (index, (window, button)) = maybe_button.unwrap();
+                            let button = button.upgrade();
+                            if button.is_some() {
+                                update_taskbar_button(&button.unwrap(), &w, &application_cache);
+                                *window = w;
+                            } else {
+                                buttons.remove(index);
+                            }
+                        }
+                    }
+                },
             }
         }
     }));

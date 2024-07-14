@@ -13,12 +13,56 @@ pub trait EventData: Clone {
     fn parse(data: &str) -> Option<Self> where Self: Sized;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum HyprlandEvent {
     Workspace(String),
     WorkspaceV2(WorkspaceV2),
     FocusedMon(FocusedMon),
     ActiveWindow(ActiveWindow),
+    // Window address
+    ActiveWindowV2(String),
+    Fullscreen(bool),
+    // Monitor name
+    MonitorRemoved(String),
+    // Monitor name
+    MonitorAdded(String),
+    MonitorAddedV2(MonitorAddedV2),
+    // Workspace name
+    CreateWorkspace(String),
+    CreateWorkspaceV2(CreateWorkspaceV2),
+    MoveWorkspace(MoveWorkspace),
+    MoveWorkspaceV2(MoveWorkspaceV2),
+    RenameWorkspace(RenameWorkspace),
+    ActiveSpecial(ActiveSpecial),
+    ActiveLayout(ActiveLayout),
+    OpenWindow(OpenWindow),
+    // Window address
+    CloseWindow(String),
+    MoveWindow(MoveWindow),
+    MoveWindowV2(MoveWindowV2),
+    // Namespace
+    OpenLayer(String),
+    // Namespace
+    CloseLayer(String),
+    // Submap name
+    Submap(String),
+    ChangeFloatingMode(ChangeFloatingMode),
+    // Window address
+    Urgent(String),
+    Minimize(Minimize),
+    Screencast(Screencast),
+    // Window address
+    WindowTitle(String),
+    WindowTitleV2(WindowTitleV2),
+    ToggleGroup(ToggleGroup),
+    // Window address
+    MoveIntoGroup(String),
+    // Window address
+    MoveOutOfGroup(String),
+    IgnoreGroupLock(bool),
+    LockGroups(bool),
+    ConfigReloaded(),
+    Pin(Pin),
     //WindowTitle(
 }
 
@@ -30,7 +74,13 @@ impl EventData for HyprlandEvent {
               "workspacev2" => WorkspaceV2::parse(data).map(|d| Self::WorkspaceV2(d)),
               "focusedmon" => FocusedMon::parse(data).map(|d| Self::FocusedMon(d)),
               "activewindow" => ActiveWindow::parse(data).map(|d| Self::ActiveWindow(d)),
-              _ => None
+              "activewindowv2" => Some(Self::ActiveWindowV2(format!("0x{}", data.to_owned()))),
+              "fullscreen" => Some(Self::Fullscreen(data == "1")),
+              "monitorremoved" => Some(Self::MonitorRemoved(data.to_owned())),
+              "monitoradded" => Some(Self::MonitorAdded(data.to_owned())),
+              "openwindow" => OpenWindow::parse(data).map(|ow| Self::OpenWindow(ow)),
+              "closewindow" => Some(Self::CloseWindow(format!("0x{}", data.to_owned()))),
+              _ => { println!("Unhandled event: {}>>{}", command, data); None }
             }
         } else {
             None
@@ -38,7 +88,127 @@ impl EventData for HyprlandEvent {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+pub struct MonitorAddedV2 {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct CreateWorkspaceV2 {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct DestroyWorkspaceV2 {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct MoveWorkspace {
+    pub name: String,
+    pub monitor_name: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct MoveWorkspaceV2 {
+    pub id: String,
+    pub name: String,
+    pub monitor_name: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct RenameWorkspace {
+    pub id: String,
+    pub new_name: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ActiveSpecial {
+    pub name: String,
+    pub monitor_name: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ActiveLayout {
+    pub keyboard_name: String,
+    pub layout_name: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct OpenWindow {
+    pub address: String,
+    pub workspace_name: String,
+    pub class: String,
+    pub title: String,
+}
+
+impl EventData for OpenWindow {
+    fn parse(data: &str) -> Option<Self> where Self: Sized {
+        let mut parts = data.splitn(4, ",");
+        Some(Self {
+            address: format!("0x{}", parts.next()?.to_owned()),
+            workspace_name: parts.next()?.to_owned(),
+            class: parts.next()?.to_owned(),
+            title: parts.next()?.to_owned(),
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MoveWindow {
+    window_address: String,
+    workspace_name: String
+}
+
+#[derive(Clone, Debug)]
+pub struct MoveWindowV2 {
+    pub window_address: String,
+    pub workspace_id: i32,
+    pub workspace_name: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ChangeFloatingMode {
+    window_address: String,
+    is_floating: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct Minimize {
+    window_address: String,
+    is_minimized: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct Screencast {
+    state: bool,
+    // Should be an enum with 0 == monitor and 1 == window sharing
+    owner: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct WindowTitleV2 {
+    address: String,
+    title: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ToggleGroup {
+    state: bool,
+    window_addresses: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Pin {
+    window_address: String,
+    pin_state: String,
+}
+
+#[derive(Clone, Debug)]
 pub struct WorkspaceV2 {
     pub id: String,
     pub name: String,
@@ -55,7 +225,7 @@ impl EventData for WorkspaceV2 {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FocusedMon {
     pub id: String,
     pub name: String,
@@ -72,7 +242,7 @@ impl EventData for FocusedMon {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct ActiveWindow {
     pub title: String,
 }
@@ -93,7 +263,7 @@ pub struct Workspace {
 }
 
 pub(super) struct LatestEventValue<T> {
-    current_value: Mutex<(i64, T)>,
+    pub current_value: Mutex<(i64, T)>,
 
     trigger: Condvar,
 }

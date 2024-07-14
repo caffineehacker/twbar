@@ -9,28 +9,8 @@ pub struct HyprlandCommands {
 }
 
 impl HyprlandCommands {
-    pub async fn instance() -> Arc<Self> {
-        static INSTANCE: Mutex<Weak<HyprlandCommands>> = Mutex::new(Weak::new());
-        
-        let mut mutex_guard = INSTANCE.lock().await;
-        match mutex_guard.upgrade() {
-            Some(instance) => instance,
-            None => {
-                let instance = Self::new().await;
-                *mutex_guard = Arc::downgrade(&instance);
-                instance
-            }
-        }
-    }
-
-    async fn new() -> Arc<Self> {
-        Arc::new(Self {
-            socket: Mutex::new(Utils::create_dispatch_socket().await.unwrap())
-        })
-    }
-
-    pub async fn send_command(&self, command: &str) -> String {
-        let mut socket = self.socket.lock().await;
+    pub async fn send_command(command: &str) -> String {
+        let mut socket = Utils::create_dispatch_socket().await.unwrap();
         socket.write_all(&command.as_bytes()).await.unwrap();
         io::timeout(Duration::from_secs(1), async {
             let mut buf = vec![0; 1024];
@@ -48,7 +28,7 @@ impl HyprlandCommands {
         }).await.unwrap()
     }
 
-    pub async fn set_active_window(&self, window_address: &str) {
-        self.send_command(&format!("dispatch focuswindow address:{}", window_address)).await;
+    pub async fn set_active_window(window_address: &str) {
+        Self::send_command(&format!("dispatch focuswindow address:{}", window_address)).await;
     }
 }
