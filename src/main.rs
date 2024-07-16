@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use gio::glib::property::PropertyGet;
 use glib::clone;
 use gtk::prelude::*;
 use gtk::{glib, Application, ApplicationWindow};
+use gtk4::gdk::{Display, Monitor};
 use gtk4::{self as gtk, Button, Label, Orientation, Widget};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 
@@ -173,24 +175,33 @@ fn taskbar_widget(monitor: i32) -> Widget {
     container.into()
 }
 
-fn bar_window(app: &Application, hyprland_events: Arc<HyprlandEvents>) -> ApplicationWindow {
+fn bar_window(app: &Application, monitor: &Monitor, hyprland_events: Arc<HyprlandEvents>) -> ApplicationWindow {
     let window = ApplicationWindow::new(app);
 
     window.init_layer_shell();
     window.set_layer(Layer::Top);
     window.auto_exclusive_zone_enable();
+    window.set_monitor(monitor);
 
     window.set_anchor(Edge::Left, true);
     window.set_anchor(Edge::Top, true);
     window.set_anchor(Edge::Right, true);
     window.set_anchor(Edge::Bottom, false);
 
-    let hbox = gtk::Box::new(Orientation::Horizontal, 8);
+    let vbox = gtk::Box::new(Orientation::Vertical, 1);
 
-    let label = Label::new(Some("Window Label"));
-    hbox.append(&label);
+    // FIXME: Figure out the monitor index.
+    //let connector = monitor.connector();
+
+    let hbox = gtk::Box::new(Orientation::Horizontal, 8);
     hbox.append(&taskbar_widget(0));
-    window.set_child(Some(&hbox));
+    
+
+    vbox.append(&hbox);
+    
+    let label = Label::new(Some("Window Label"));
+    vbox.append(&label);
+    window.set_child(Some(&vbox));
 
     glib::spawn_future_local(clone!(@weak label, @strong hyprland_events => async move {
         let mut active_window_stream = hyprland_events.get_active_window_emitter();
@@ -205,7 +216,12 @@ fn bar_window(app: &Application, hyprland_events: Arc<HyprlandEvents>) -> Applic
 }
 
 fn activate(app: &Application, hyprland_events: Arc<HyprlandEvents>) {
-    bar_window(app, hyprland_events).show()
+    // FIXME: Handle multiple monitors and remove / add bars as needed
+    let display = Display::default().unwrap();
+    let monitors = display.monitors();
+    for i in 0..monitors.n_items() {
+        bar_window(app, monitors.item(i).unwrap().dynamic_cast_ref().unwrap(), hyprland_events.clone()).show()
+    }
 }
 
 #[async_std::main]
