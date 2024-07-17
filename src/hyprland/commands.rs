@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use async_std::{io::{self, ReadExt, WriteExt}, os::unix::net::UnixStream, sync::{Arc, Mutex, Weak}};
+use async_std::io::{self, ReadExt, WriteExt};
 
 use super::utils::Utils;
 

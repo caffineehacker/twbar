@@ -2,7 +2,7 @@ use std::{borrow::BorrowMut, collections::{HashMap, HashSet}, ops::DerefMut};
 
 use async_broadcast::{broadcast, InactiveReceiver, Receiver, Sender};
 use wayland_client::{backend::ObjectId, event_created_child, globals::{registry_queue_init, GlobalListContents}, protocol::wl_registry, Connection, Dispatch, Proxy, QueueHandle};
-use wayland_protocols_wlr::{foreign_toplevel::v1::client::{zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1}, zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1}}, output_management::v1::client::{zwlr_output_manager_v1::{self, ZwlrOutputManagerV1}, zwlr_output_head_v1::{self, ZwlrOutputHeadV1}}};
+use wayland_protocols_wlr::{foreign_toplevel::v1::client::{zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1}, zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1}}, output_management::v1::client::{zwlr_output_head_v1::{self, ZwlrOutputHeadV1}, zwlr_output_manager_v1::{self, ZwlrOutputManagerV1}, zwlr_output_mode_v1::ZwlrOutputModeV1}};
 use wayland_protocols::ext::foreign_toplevel_list::v1::client::{ext_foreign_toplevel_handle_v1::{self, ExtForeignToplevelHandleV1}, ext_foreign_toplevel_list_v1::{self, ExtForeignToplevelListV1}};
 use async_std::{sync::{Arc, Mutex, RwLock, Weak}, task};
 
@@ -79,7 +79,7 @@ impl WaylandManager {
                 .bind::<ZwlrForeignToplevelManagerV1, _, _>(&queue.handle(), 1..=3, ()).unwrap();
             globals
                 .bind::<ExtForeignToplevelListV1, _, _>(&queue.handle(), 1..=1, ()).unwrap();
-            globals.bind::<ZwlrOutputManagerV1, _, _>(&queue.handle(), 1..=1, ()).unwrap();
+            globals.bind::<ZwlrOutputManagerV1, _, _>(&queue.handle(), 1..=4, ()).unwrap();
 
             let mut state = WaylandDispatchReceiver {
                 window_event_sender,
@@ -88,7 +88,10 @@ impl WaylandManager {
                 outputs_state,
             };
 
-            queue.roundtrip(&mut state).unwrap();
+            let result = queue.roundtrip(&mut state);
+            if result.is_err() {
+                panic!("Failed to roundtrip: {}", result.err().unwrap());
+            }
 
             loop {
                 queue.blocking_dispatch(&mut state).unwrap();
@@ -362,7 +365,7 @@ impl Dispatch<ZwlrOutputManagerV1, ()> for WaylandDispatchReceiver {
     }
 
     event_created_child!(WaylandDispatchReceiver, ZwlrOutputManagerV1, [
-        _ => ( ZwlrOutputHeadV1, ())
+      _ => ( ZwlrOutputHeadV1, ())
     ]);
 }
 
@@ -371,9 +374,9 @@ impl Dispatch<ZwlrOutputHeadV1, ()> for WaylandDispatchReceiver {
         state: &mut Self,
         proxy: &ZwlrOutputHeadV1,
         event: <ZwlrOutputHeadV1 as Proxy>::Event,
-        data: &(),
-        conn: &Connection,
-        qhandle: &QueueHandle<Self>,
+        _data: &(),
+        _conn: &Connection,
+        _qhandle: &QueueHandle<Self>,
     ) {
         task::block_on(async {
             let mut outputs_write = state.outputs_state.write().await;
@@ -384,22 +387,39 @@ impl Dispatch<ZwlrOutputHeadV1, ()> for WaylandDispatchReceiver {
             }
             let output = output.unwrap();
             match event {
-                zwlr_output_head_v1::Event::Name { name } => output.name = name,
-                zwlr_output_head_v1::Event::Description { description } => todo!(),
-                zwlr_output_head_v1::Event::PhysicalSize { width, height } => todo!(),
-                zwlr_output_head_v1::Event::Mode { mode } => todo!(),
-                zwlr_output_head_v1::Event::Enabled { enabled } => todo!(),
-                zwlr_output_head_v1::Event::CurrentMode { mode } => todo!(),
-                zwlr_output_head_v1::Event::Position { x, y } => todo!(),
-                zwlr_output_head_v1::Event::Transform { transform } => todo!(),
-                zwlr_output_head_v1::Event::Scale { scale } => todo!(),
-                zwlr_output_head_v1::Event::Finished => todo!(),
-                zwlr_output_head_v1::Event::Make { make } => todo!(),
-                zwlr_output_head_v1::Event::Model { model } => todo!(),
-                zwlr_output_head_v1::Event::SerialNumber { serial_number } => todo!(),
-                zwlr_output_head_v1::Event::AdaptiveSync { state } => todo!(),
-                _ => todo!(),
+                // zwlr_output_head_v1::Event::Name { name } => output.name = name,
+                // zwlr_output_head_v1::Event::Description { description } => todo!(),
+                // zwlr_output_head_v1::Event::PhysicalSize { width, height } => todo!(),
+                // zwlr_output_head_v1::Event::Mode { mode } => todo!(),
+                // zwlr_output_head_v1::Event::Enabled { enabled } => todo!(),
+                // zwlr_output_head_v1::Event::CurrentMode { mode } => todo!(),
+                // zwlr_output_head_v1::Event::Position { x, y } => todo!(),
+                // zwlr_output_head_v1::Event::Transform { transform } => todo!(),
+                // zwlr_output_head_v1::Event::Scale { scale } => todo!(),
+                // zwlr_output_head_v1::Event::Finished => todo!(),
+                // zwlr_output_head_v1::Event::Make { make } => todo!(),
+                // zwlr_output_head_v1::Event::Model { model } => todo!(),
+                // zwlr_output_head_v1::Event::SerialNumber { serial_number } => todo!(),
+                // zwlr_output_head_v1::Event::AdaptiveSync { state } => todo!(),
+                _ => {},
             }
         });
+    }
+
+    event_created_child!(WaylandDispatchReceiver, ZwlrOutputHeadV1, [
+        _ => ( ZwlrOutputModeV1, ())
+      ]);
+}
+
+impl Dispatch<ZwlrOutputModeV1, ()> for WaylandDispatchReceiver {
+    fn event(
+        state: &mut Self,
+        proxy: &ZwlrOutputModeV1,
+        event: <ZwlrOutputModeV1 as Proxy>::Event,
+        data: &(),
+        conn: &Connection,
+        qhandle: &QueueHandle<Self>,
+    ) {
+        
     }
 }

@@ -1,6 +1,5 @@
 use async_broadcast::{broadcast, InactiveReceiver, Receiver};
-use async_std::{stream::StreamExt, sync::{Arc, Mutex, Weak}, task};
-use futures::{select, future::{select, Either}};
+use async_std::{sync::{Arc, Mutex, Weak}, task};
 use serde::Deserialize;
 
 use super::{commands::HyprlandCommands, events::{EventData, HyprlandEvent, HyprlandEvents, LatestEventValue, LatestEventValueListener, MoveWindow, MoveWindowV2, OpenWindow}, wayland_manager::{ExtForeignToplevel, WaylandManager}};
@@ -165,15 +164,22 @@ impl HyprlandWindows {
                     let event = events.recv().await.unwrap();
                     println!("Hyprland Event: {:?}", event);
                     match &event {
-                        HyprlandEvent::CloseWindow(address) => { sender.broadcast(WindowEvent::ClosedWindow(address.clone())).await.ok(); }
+                        HyprlandEvent::CloseWindow(address) => {
+                            instance.windows.update_fn(|current_windows| {
+                                let updated_windows: Vec<HyprlandWindow> = current_windows.clone().into_iter().filter(|w| w.address != *address).collect();
+
+                                Some(updated_windows)
+                            }).await;
+                            sender.broadcast(WindowEvent::ClosedWindow(address.clone())).await.ok();
+                        }
                         HyprlandEvent::MoveWindowV2(move_window) => {
                             let mut updated_hyprland_window = None;
                             instance.windows.update_fn(|current_windows| {
                                 let updated_windows: Vec<HyprlandWindow> = current_windows.clone().into_iter().map(|mut w| {
                                     if w.address == move_window.window_address {
                                         w.update_from_event(&event);
+                                        updated_hyprland_window = Some(w.clone());
                                     }
-                                    updated_hyprland_window = Some(w.clone());
                                     w
                                 }).collect();
 

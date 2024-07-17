@@ -78,6 +78,12 @@ impl EventData for HyprlandEvent {
               "fullscreen" => Some(Self::Fullscreen(data == "1")),
               "monitorremoved" => Some(Self::MonitorRemoved(data.to_owned())),
               "monitoradded" => Some(Self::MonitorAdded(data.to_owned())),
+              "monitoraddedv2" => MonitorAddedV2::parse(data).map(|ma| Self::MonitorAddedV2(ma)),
+              "createworkspace" => Some(Self::CreateWorkspace(data.to_owned())),
+              "createworkspacev2" => CreateWorkspaceV2::parse(data).map(|cw| Self::CreateWorkspaceV2(cw)),
+              "moveworkspace" => MoveWorkspace::parse(data).map(|mw| Self::MoveWorkspace(mw)),
+              "moveworkspacev2" => MoveWorkspaceV2::parse(data).map(|mw| Self::MoveWorkspaceV2(mw)),
+              "renameworkspace" => RenameWorkspace::parse(data).map(|rw| Self::RenameWorkspace(rw)),
               "openwindow" => OpenWindow::parse(data).map(|ow| Self::OpenWindow(ow)),
               "closewindow" => Some(Self::CloseWindow(format!("0x{}", data.to_owned()))),
               _ => { println!("Unhandled event: {}>>{}", command, data); None }
@@ -95,10 +101,31 @@ pub struct MonitorAddedV2 {
     pub description: String,
 }
 
+impl EventData for MonitorAddedV2 {
+    fn parse(data: &str) -> Option<Self> where Self: Sized {
+        let mut parts = data.splitn(3, ",");
+        Some(Self {
+            id: parts.next()?.to_owned(),
+            name: parts.next()?.to_owned(),
+            description: parts.next()?.to_owned(),
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct CreateWorkspaceV2 {
     pub id: String,
     pub name: String,
+}
+
+impl EventData for CreateWorkspaceV2 {
+    fn parse(data: &str) -> Option<Self> where Self: Sized {
+        let (id, name) = data.split_once(",")?;
+        Some(Self {
+            id: id.to_owned(),
+            name: name.to_owned(),
+        })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -113,6 +140,16 @@ pub struct MoveWorkspace {
     pub monitor_name: String,
 }
 
+impl EventData for MoveWorkspace {
+    fn parse(data: &str) -> Option<Self> where Self: Sized {
+        let (name, monitor_name) = data.split_once(",")?;
+        Some(Self {
+            name: name.to_owned(),
+            monitor_name: monitor_name.to_owned(),
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct MoveWorkspaceV2 {
     pub id: String,
@@ -120,10 +157,31 @@ pub struct MoveWorkspaceV2 {
     pub monitor_name: String,
 }
 
+impl EventData for MoveWorkspaceV2 {
+    fn parse(data: &str) -> Option<Self> where Self: Sized {
+        let mut parts = data.splitn(3, ",");
+        Some(Self {
+            id: parts.next()?.to_owned(),
+            name: parts.next()?.to_owned(),
+            monitor_name: parts.next()?.to_owned(),
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct RenameWorkspace {
     pub id: String,
     pub new_name: String,
+}
+
+impl EventData for RenameWorkspace {
+    fn parse(data: &str) -> Option<Self> where Self: Sized {
+        let (id, new_name) = data.split_once(",")?;
+        Some(Self {
+            id: id.to_owned(),
+            new_name: new_name.to_owned(),
+        })
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -132,6 +132,7 @@ fn taskbar_widget(monitor: i32) -> Widget {
                         continue;
                     }
                     if !buttons.iter().any(|(window, _button)| window.address == w.address) {
+                        println!("Button doesn't exist");
                         if buttons.len() == 0 {
                             let button = taskbar_button(&w, &application_cache);
                             buttons.insert(0, (w, button.downgrade()));
@@ -140,7 +141,8 @@ fn taskbar_widget(monitor: i32) -> Widget {
                         }
                         for index in 0..buttons.len() {
                             let (existing_window, existing_button) = &buttons[index];
-                            if existing_window.workspace.id == w.workspace.id {
+                            if existing_window.workspace.id == w.workspace.id || index == buttons.len() - 1 {
+                                println!("Inserting at index {}", index);
                                 let existing_button = existing_button.upgrade().unwrap();
                                 let button = taskbar_button(&w, &application_cache);
                                 buttons.insert(index, (w, button.downgrade()));
