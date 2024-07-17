@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use gio::glib::property::PropertyGet;
+use gio::glib::WeakRef;
 use glib::clone;
 use gtk::prelude::*;
 use gtk::{glib, Application, ApplicationWindow};
@@ -70,107 +71,53 @@ fn taskbar_widget(monitor: i32) -> Widget {
     glib::spawn_future_local(clone!(@weak container => async move {
         let application_cache = XdgApplicationsCache::new();
         let hyprland_windows = HyprlandWindows::instance().await;
-        let (mut current_windows, mut emitter) = hyprland_windows.get_window_event_emitter().await;
+        let mut windows = hyprland_windows.get_windows_update_emitter();
 
-        let mut buttons = Vec::new();
-        current_windows.sort_by(|a, b| a.workspace.id.cmp(&b.workspace.id));
-
-        for window in current_windows.into_iter().filter(|w| w.monitor == monitor) {
-            println!("Adding current window: {:?}", window);
-            let button = taskbar_button(&window, &application_cache);
-            container.append(&button);
-            buttons.push((window, button.downgrade()));
-        }
+        let mut buttons: Vec<(HyprlandWindow, Button)> = Vec::new();
 
         loop {
-            let event = emitter.recv().await;
-            if event.is_err() {
-                panic!("ERROR WITH EVENT EMITTER: {}", event.err().unwrap());
-            }
-            let event = event.unwrap();
-            println!("Windows updated event! {:?}", event);
+            let mut current_windows = windows.next().await;
 
-            match event {
-                hyprland::windows::WindowEvent::ClosedWindow(addr) => {
-                    println!("Running close window for {}", addr);
-                    'button_search: for index in 0..buttons.len() {
-                        let (window, button) = &buttons.get(index).unwrap();
-                        if window.address == addr {
-                            let button = button.upgrade();
-                            if button.is_some() {
-                                container.remove(&button.unwrap());
-                            } else {
-                                println!("Failed to upgrade button for removal!");
-                            }
-                            buttons.remove(index);
-                            break 'button_search;
-                        }
+            current_windows.sort_by(|a, b| a.workspace.id.cmp(&b.workspace.id));
+            let current_windows: Vec<HyprlandWindow> = current_windows.into_iter().filter(|w| w.monitor == monitor).collect();
+            let number_of_windows = current_windows.len();
 
-                        if index == buttons.len() - 1 {
-                            println!("close window failed to find button {}", addr);
-                        }
+            for (index, window) in current_windows.into_iter().enumerate() {
+                let current_value = buttons.iter_mut().enumerate().find(|(_, (w, _b))| w.address == window.address);
+                if current_value.is_some() {
+                    let (current_index, (current_window, current_button)) = current_value.unwrap();
+                    if window != *current_window {
+                        update_taskbar_button(&current_button, &current_window, &application_cache);
+                        *current_window = window;
                     }
-                },
-                hyprland::windows::WindowEvent::ModifiedWindow(w) => {
-                    // TODO: Handle moving the button when it changes workspaces
-                    let maybe_button = buttons.iter_mut().enumerate().filter(|(_i, (window, _))| window.address == w.address).next();
-                    if maybe_button.is_some() {
-                        let (index, (window, button)) = maybe_button.unwrap();
-                        let button = button.upgrade();
-                        if button.is_some() {
-                            update_taskbar_button(&button.unwrap(), &w, &application_cache);
-                            *window = w;
-                        } else {
-                            buttons.remove(index);
+                    if current_index != index {
+                        let current_button = current_button.clone();
+                        buttons.swap(index, current_index);
+                        let mut sibling = None;
+                        if index > 0 {
+                            sibling = buttons.get(index - 1).map(|(_, b)| b);
                         }
+                        container.reorder_child_after(&current_button, sibling)
                     }
-                },
-                hyprland::windows::WindowEvent::NewWindow(w) => {
-                    println!("New window");
-                    if w.monitor != monitor {
-                        println!("Did not match monitor");
-                        continue;
-                    }
-                    if !buttons.iter().any(|(window, _button)| window.address == w.address) {
-                        println!("Button doesn't exist");
-                        if buttons.len() == 0 {
-                            let button = taskbar_button(&w, &application_cache);
-                            buttons.insert(0, (w, button.downgrade()));
-                            container.prepend(&button);
-                            continue;
-                        }
-                        for index in 0..buttons.len() {
-                            let (existing_window, existing_button) = &buttons[index];
-                            if existing_window.workspace.id == w.workspace.id || index == buttons.len() - 1 {
-                                println!("Inserting at index {}", index);
-                                let existing_button = existing_button.upgrade().unwrap();
-                                let button = taskbar_button(&w, &application_cache);
-                                buttons.insert(index, (w, button.downgrade()));
-                                if index == 0 {
-                                    container.prepend(&button);
-                                } else {
-                                    container.insert_child_after(&button, Some(&existing_button));
-                                }
-
-                                break;
-                            }
-                        }
+                } else {
+                    println!("Adding current window {}: {:?}", index, window);
+                    let button = taskbar_button(&window, &application_cache);
+                    if index > 0 {
+                        let current_button = buttons.get(index - 1).unwrap();
+                        println!("New sibling: {:?}", current_button.1);
+                        container.append(&button);
+                        container.reorder_child_after(&button, buttons.get(index - 1).map(|(_, b)| b))
                     } else {
-                        // Treat it like an update event
-                        let maybe_button = buttons.iter_mut().enumerate().filter(|(_i, (window, _))| window.address == w.address).next();
-                        if maybe_button.is_some() {
-                            let (index, (window, button)) = maybe_button.unwrap();
-                            let button = button.upgrade();
-                            if button.is_some() {
-                                update_taskbar_button(&button.unwrap(), &w, &application_cache);
-                                *window = w;
-                            } else {
-                                buttons.remove(index);
-                            }
-                        }
+                        container.prepend(&button);
                     }
-                },
+                    buttons.insert(index, (window, button));
+                }
             }
+
+            for i in number_of_windows..buttons.len() {
+                container.remove(&buttons.get(i).unwrap().1);
+            }
+            buttons.truncate(number_of_windows);
         }
     }));
 

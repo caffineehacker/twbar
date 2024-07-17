@@ -12,13 +12,13 @@ pub enum WindowEvent {
     ClosedWindow(String),
 }
 
-#[derive(Deserialize, Clone, Default, Debug)]
+#[derive(Deserialize, Clone, Default, Debug, PartialEq, Eq)]
 pub struct HyprlandWorkspace {
     pub id: i32,
     pub name: String,
 }
 
-#[derive(Deserialize, Clone, Default, Debug)]
+#[derive(Deserialize, Clone, Default, Debug, PartialEq, Eq)]
 pub struct HyprlandWindow {
     pub address: String,
     pub mapped: bool,
@@ -171,6 +171,7 @@ impl HyprlandWindows {
                                 Some(updated_windows)
                             }).await;
                             sender.broadcast(WindowEvent::ClosedWindow(address.clone())).await.ok();
+                            instance.force_refresh().await;
                         }
                         HyprlandEvent::MoveWindowV2(move_window) => {
                             let mut updated_hyprland_window = None;
@@ -189,6 +190,7 @@ impl HyprlandWindows {
                             if updated_hyprland_window.is_some() {
                                 sender.broadcast(WindowEvent::ModifiedWindow(updated_hyprland_window.unwrap())).await.ok();
                             }
+                            instance.force_refresh().await;
                         },
                         HyprlandEvent::OpenWindow(open_window) => {
                             let mut updated_hyprland_window = None;
@@ -219,6 +221,7 @@ impl HyprlandWindows {
                             } else if new_hyprland_window.is_some() {
                                 sender.broadcast(WindowEvent::NewWindow(new_hyprland_window.unwrap())).await.ok();
                             }
+                            instance.force_refresh().await;
                         },
                         _ => {},
                     }
