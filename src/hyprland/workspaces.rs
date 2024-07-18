@@ -1,5 +1,4 @@
-use async_broadcast::{broadcast, InactiveReceiver};
-use async_std::{sync::{Arc, Mutex, RwLock, Weak}, task};
+use async_std::{sync::{Arc, Mutex, Weak}, task};
 use gio::glib::clone::Downgrade;
 use serde::Deserialize;
 

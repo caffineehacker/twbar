@@ -2,7 +2,7 @@ use async_broadcast::{broadcast, InactiveReceiver, Receiver};
 use async_std::{sync::{Arc, Mutex, Weak}, task};
 use serde::Deserialize;
 
-use super::{commands::HyprlandCommands, events::{EventData, HyprlandEvent, HyprlandEvents, LatestEventValue, LatestEventValueListener, MoveWindow, MoveWindowV2, OpenWindow}, wayland_manager::{ExtForeignToplevel, WaylandManager}};
+use super::{commands::HyprlandCommands, events::{EventData, HyprlandEvent, HyprlandEvents, LatestEventValue, LatestEventValueListener}, wayland_manager::{ExtForeignToplevel, WaylandManager}};
 
 #[derive(Clone, Debug)]
 pub enum WindowEvent {
@@ -52,23 +52,23 @@ pub struct HyprlandWindow {
 
 impl HyprlandWindow {
     fn update_from(&mut self, foreign_toplevel: &ExtForeignToplevel) {
-        self.address = "0x".to_owned() + foreign_toplevel.identifier.split_once("->").unwrap().1.trim_start_matches("0");
-        self.title = foreign_toplevel.title.clone();
+        self.address = "0x".to_owned() + foreign_toplevel.identifier.split_once("->").unwrap().1.trim_start_matches('0');
+        self.title.clone_from(&foreign_toplevel.title);
     }
 
     fn update_from_event(&mut self, event: &HyprlandEvent) {
         match event {
             HyprlandEvent::MoveWindowV2(move_window) => {
                 self.workspace.id = move_window.workspace_id;
-                self.workspace.name = move_window.workspace_name.clone();
+                self.workspace.name.clone_from(&move_window.workspace_name);
             },
             HyprlandEvent::OpenWindow(open_window) => {
                 assert!(self.address.is_empty() || self.address == open_window.address);
-                self.address = open_window.address.to_owned();
-                self.initial_class = open_window.class.to_owned();
-                self.class = open_window.class.to_owned();
-                self.initial_title = open_window.title.to_owned();
-                self.title = open_window.title.to_owned();
+                open_window.address.clone_into(&mut self.address);
+                open_window.class.clone_into(&mut self.initial_class);
+                open_window.class.clone_into(&mut self.class);
+                open_window.title.clone_into(&mut self.initial_title);
+                open_window.title.clone_into(&mut self.title);
 
                 // FIXME: Set workspace based on the workspace name.
             },

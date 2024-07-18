@@ -1,5 +1,4 @@
-use async_broadcast::{broadcast, InactiveReceiver};
-use async_std::{sync::{Arc, Mutex, RwLock, Weak}, task};
+use async_std::{sync::{Arc, Mutex, Weak}, task};
 use serde::Deserialize;
 
 use super::{commands::HyprlandCommands, events::{HyprlandEvents, LatestEventValue, LatestEventValueListener}};
@@ -80,9 +79,7 @@ impl HyprlandMonitors {
 
                 loop {
                     let event = events.recv().await.unwrap();
-                    match event {
-                        _ => {},
-                    }
+                    {}
                 }
             });
         }

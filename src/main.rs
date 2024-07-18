@@ -125,7 +125,7 @@ fn taskbar_widget(monitor: i32) -> Widget {
                 if current_value.is_some() {
                     let (current_index, (current_window, current_button)) = current_value.unwrap();
                     if window != *current_window {
-                        update_taskbar_button(&current_button, &current_window, &application_cache);
+                        update_taskbar_button(current_button, current_window, &application_cache);
                         *current_window = window;
                     }
                     if current_index != index {
@@ -181,7 +181,7 @@ fn bar_window(app: &Application, monitor: &Monitor) -> ApplicationWindow {
         let hyprland_monitors = HyprlandMonitors::instance().await;
         let mut monitors_emitter = hyprland_monitors.get_monitor_state_emitter();
         let monitors = monitors_emitter.next().await;
-        let hyprland_monitor = monitors.iter().find(|m| m.name == connector).expect(&format!("Failed to find monitor match {}", connector));
+        let hyprland_monitor = monitors.iter().find(|m| m.name == connector).unwrap_or_else(|| panic!("Failed to find monitor match {}", connector));
 
         let hbox = gtk::Box::new(Orientation::Horizontal, 8);
         hbox.append(&workspaces_bar(hyprland_monitor.id));
@@ -226,7 +226,7 @@ async fn main() -> Result<glib::ExitCode, ()> {
 
     app.connect_activate(
         move |app| {
-            activate(&app)
+            activate(app)
         }
     );
 

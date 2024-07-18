@@ -10,7 +10,7 @@ pub struct HyprlandCommands {
 impl HyprlandCommands {
     pub async fn send_command(command: &str) -> String {
         let mut socket = Utils::create_dispatch_socket().await.unwrap();
-        socket.write_all(&command.as_bytes()).await.unwrap();
+        socket.write_all(command.as_bytes()).await.unwrap();
         io::timeout(Duration::from_secs(3), async {
             let mut buf = vec![0; 1024];
             let mut final_buffer = Vec::new();

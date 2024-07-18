@@ -1,8 +1,8 @@
-use std::{borrow::BorrowMut, collections::{HashMap, HashSet}, ops::DerefMut};
+use std::{collections::{HashMap, HashSet}, ops::DerefMut};
 
 use async_broadcast::{broadcast, InactiveReceiver, Receiver, Sender};
 use wayland_client::{backend::ObjectId, event_created_child, globals::{registry_queue_init, GlobalListContents}, protocol::wl_registry, Connection, Dispatch, Proxy, QueueHandle};
-use wayland_protocols_wlr::{foreign_toplevel::v1::client::{zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1}, zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1}}, output_management::v1::client::{zwlr_output_head_v1::{self, ZwlrOutputHeadV1}, zwlr_output_manager_v1::{self, ZwlrOutputManagerV1}, zwlr_output_mode_v1::ZwlrOutputModeV1}};
+use wayland_protocols_wlr::{foreign_toplevel::v1::client::{zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1}, zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1}}, output_management::v1::client::{zwlr_output_head_v1::{ZwlrOutputHeadV1}, zwlr_output_manager_v1::{self, ZwlrOutputManagerV1}, zwlr_output_mode_v1::ZwlrOutputModeV1}};
 use wayland_protocols::ext::foreign_toplevel_list::v1::client::{ext_foreign_toplevel_handle_v1::{self, ExtForeignToplevelHandleV1}, ext_foreign_toplevel_list_v1::{self, ExtForeignToplevelListV1}};
 use async_std::{sync::{Arc, Mutex, RwLock, Weak}, task};
 
@@ -104,8 +104,8 @@ impl WaylandManager {
     // Returns the currently known window states as a vec of WaylandWindowEvents (just NewWindow* events) and a receiver for future events.
     pub async fn create_window_listener(&self) -> (Vec<WaylandWindowEvent>, Receiver<WaylandWindowEvent>) {
         let windows_state = self.windows_state.read().await;
-        let mut events : Vec<WaylandWindowEvent> = windows_state.ext_windows.iter().map(|(_, w)| WaylandWindowEvent::NewWindowExt(w.clone())).collect();
-        events.extend(windows_state.zwlr_windows.iter().map(|(_, w)| WaylandWindowEvent::NewWindowWlr(w.clone())));
+        let mut events : Vec<WaylandWindowEvent> = windows_state.ext_windows.values().map(|w| WaylandWindowEvent::NewWindowExt(w.clone())).collect();
+        events.extend(windows_state.zwlr_windows.values().map(|w| WaylandWindowEvent::NewWindowWlr(w.clone())));
         (events, self.window_event_receiver.activate_cloned())
     }
 }
@@ -386,23 +386,7 @@ impl Dispatch<ZwlrOutputHeadV1, ()> for WaylandDispatchReceiver {
                 output = outputs_write.get_mut(&proxy.id());
             }
             let output = output.unwrap();
-            match event {
-                // zwlr_output_head_v1::Event::Name { name } => output.name = name,
-                // zwlr_output_head_v1::Event::Description { description } => todo!(),
-                // zwlr_output_head_v1::Event::PhysicalSize { width, height } => todo!(),
-                // zwlr_output_head_v1::Event::Mode { mode } => todo!(),
-                // zwlr_output_head_v1::Event::Enabled { enabled } => todo!(),
-                // zwlr_output_head_v1::Event::CurrentMode { mode } => todo!(),
-                // zwlr_output_head_v1::Event::Position { x, y } => todo!(),
-                // zwlr_output_head_v1::Event::Transform { transform } => todo!(),
-                // zwlr_output_head_v1::Event::Scale { scale } => todo!(),
-                // zwlr_output_head_v1::Event::Finished => todo!(),
-                // zwlr_output_head_v1::Event::Make { make } => todo!(),
-                // zwlr_output_head_v1::Event::Model { model } => todo!(),
-                // zwlr_output_head_v1::Event::SerialNumber { serial_number } => todo!(),
-                // zwlr_output_head_v1::Event::AdaptiveSync { state } => todo!(),
-                _ => {},
-            }
+            {}
         });
     }
 

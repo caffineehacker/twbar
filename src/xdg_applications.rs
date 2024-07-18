@@ -1,8 +1,4 @@
-use std::env::var;
 
-use async_std::{path::Path, sync::{Arc, Mutex, Weak}};
-use async_std::fs;
-use async_std::prelude::*;
 use gio::DesktopAppInfo;
 
 
