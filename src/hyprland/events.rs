@@ -30,6 +30,9 @@ pub enum HyprlandEvent {
     // Workspace name
     CreateWorkspace(String),
     CreateWorkspaceV2(CreateWorkspaceV2),
+    // Workspace name
+    DestroyWorkspace(String),
+    DestroyWorkspaceV2(DestroyWorkspaceV2),
     MoveWorkspace(MoveWorkspace),
     MoveWorkspaceV2(MoveWorkspaceV2),
     RenameWorkspace(RenameWorkspace),
@@ -81,6 +84,8 @@ impl EventData for HyprlandEvent {
               "monitoraddedv2" => MonitorAddedV2::parse(data).map(|ma| Self::MonitorAddedV2(ma)),
               "createworkspace" => Some(Self::CreateWorkspace(data.to_owned())),
               "createworkspacev2" => CreateWorkspaceV2::parse(data).map(|cw| Self::CreateWorkspaceV2(cw)),
+              "destroyworkspace" => Some(Self::DestroyWorkspace(data.to_owned())),
+              "destroyworkspacev2" => DestroyWorkspaceV2::parse(data).map(|dw| Self::DestroyWorkspaceV2(dw)),
               "moveworkspace" => MoveWorkspace::parse(data).map(|mw| Self::MoveWorkspace(mw)),
               "moveworkspacev2" => MoveWorkspaceV2::parse(data).map(|mw| Self::MoveWorkspaceV2(mw)),
               "renameworkspace" => RenameWorkspace::parse(data).map(|rw| Self::RenameWorkspace(rw)),
@@ -133,6 +138,16 @@ impl EventData for CreateWorkspaceV2 {
 pub struct DestroyWorkspaceV2 {
     pub id: String,
     pub name: String,
+}
+
+impl EventData for DestroyWorkspaceV2 {
+    fn parse(data: &str) -> Option<Self> where Self: Sized {
+        let (id, name) = data.split_once(",")?;
+        Some(Self {
+            id: id.to_owned(),
+            name: name.to_owned(),
+        })
+    }
 }
 
 #[derive(Clone, Debug)]

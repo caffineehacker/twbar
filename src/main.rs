@@ -1,18 +1,9 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use std::pin::pin;
-use async_std::future::IntoFuture;
-use futures::future::{select, select_all};
-use gio::glib::property::PropertyGet;
-use gio::glib::WeakRef;
 use glib::clone;
 use gtk::prelude::*;
 use gtk::{glib, Application, ApplicationWindow};
 use gtk4::gdk::{Display, Monitor};
 use gtk4::{self as gtk, Button, Label, Orientation, Widget};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
-use futures::{select, FutureExt};
 
 mod hyprland;
 mod xdg_applications;
@@ -21,7 +12,7 @@ use hyprland::commands::HyprlandCommands;
 use hyprland::events::HyprlandEvents;
 use hyprland::monitors::HyprlandMonitors;
 use hyprland::windows::{HyprlandWindow, HyprlandWindows};
-use hyprland::workspaces::{self, HyprlandWorkspace, HyprlandWorkspaces};
+use hyprland::workspaces::{HyprlandWorkspace, HyprlandWorkspaces};
 use xdg_applications::XdgApplicationsCache;
 
 fn workspace_button(workspace: &HyprlandWorkspace) -> gtk::Button {

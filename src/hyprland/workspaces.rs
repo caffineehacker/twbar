@@ -63,6 +63,8 @@ impl HyprlandWorkspaces {
                         super::events::HyprlandEvent::MoveWorkspaceV2(_) => {},
                         super::events::HyprlandEvent::RenameWorkspace(_) => instance.upgrade().unwrap().force_refresh().await,
                         super::events::HyprlandEvent::ActiveSpecial(_) => instance.upgrade().unwrap().force_refresh().await,
+                        super::events::HyprlandEvent::DestroyWorkspace(_) => instance.upgrade().unwrap().force_refresh().await,
+                        super::events::HyprlandEvent::DestroyWorkspaceV2(_) => {},
                         _ => {},
                     }
                 }
