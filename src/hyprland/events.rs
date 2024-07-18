@@ -86,6 +86,7 @@ impl EventData for HyprlandEvent {
               "renameworkspace" => RenameWorkspace::parse(data).map(|rw| Self::RenameWorkspace(rw)),
               "openwindow" => OpenWindow::parse(data).map(|ow| Self::OpenWindow(ow)),
               "closewindow" => Some(Self::CloseWindow(format!("0x{}", data.to_owned()))),
+              "movewindow" => MoveWindow::parse(data).map(|mw| Self::MoveWindow(mw)),
               _ => { println!("Unhandled event: {}>>{}", command, data); None }
             }
         } else {
@@ -218,8 +219,18 @@ impl EventData for OpenWindow {
 
 #[derive(Clone, Debug)]
 pub struct MoveWindow {
-    window_address: String,
-    workspace_name: String
+    pub window_address: String,
+    pub workspace_name: String
+}
+
+impl EventData for MoveWindow {
+    fn parse(data: &str) -> Option<Self> where Self: Sized {
+        let (window_address, workspace_name) = data.split_once(",")?;
+        Some(Self {
+            window_address: window_address.to_owned(),
+            workspace_name: workspace_name.to_owned(),
+        })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -227,6 +238,17 @@ pub struct MoveWindowV2 {
     pub window_address: String,
     pub workspace_id: i32,
     pub workspace_name: String,
+}
+
+impl EventData for MoveWindowV2 {
+    fn parse(data: &str) -> Option<Self> where Self: Sized {
+        let mut parts = data.splitn(3, ",");
+        Some(Self {
+            window_address: format!("0x{}", parts.next()?.to_owned()),
+            workspace_id: parts.next()?.to_owned().parse::<i32>().ok()?,
+            workspace_name: parts.next()?.to_owned(),
+        })
+    }
 }
 
 #[derive(Clone, Debug)]

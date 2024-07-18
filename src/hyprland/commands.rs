@@ -30,4 +30,8 @@ impl HyprlandCommands {
     pub async fn set_active_window(window_address: &str) {
         Self::send_command(&format!("dispatch focuswindow address:{}", window_address)).await;
     }
+
+    pub async fn set_active_workspace(workspace_id: i32) {
+        Self::send_command(&format!("dispatch workspace {}", workspace_id)).await;
+    }
 }
