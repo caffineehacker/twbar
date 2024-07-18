@@ -101,12 +101,13 @@ impl EventData for Vec<HyprlandWindow> {
     fn parse(data: &str) -> Option<Self> where Self: Sized {
         // TODO: Handle errors without panic
         let window_data = serde_json::from_str::<Vec<HyprlandWindow>>(data);
-        if window_data.is_err() {
-            println!("Failed to deserialize: {}", data);
-            println!("Error is {:?}", window_data.err().unwrap());
-            Some(vec![])
-        } else {
-            Some(window_data.unwrap())
+        match window_data {
+            Err(err) => {
+                println!("Failed to deserialize: {}", data);
+                println!("Error is {:?}", err);
+                Some(vec![])
+            },
+            Ok(window_data) => Some(window_data),
         }
     }
 }
