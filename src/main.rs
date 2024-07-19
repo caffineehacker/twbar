@@ -2,7 +2,7 @@ use glib::clone;
 use gtk::prelude::*;
 use gtk::{glib, Application, ApplicationWindow};
 use gtk4::gdk::{Display, Monitor};
-use gtk4::{self as gtk, Button, Label, Orientation, Widget};
+use gtk4::{self as gtk, Button, CssProvider, DebugFlags, Label, Orientation, Widget};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 
 mod hyprland;
@@ -18,7 +18,16 @@ use xdg_applications::XdgApplicationsCache;
 fn workspace_button(workspace: &HyprlandWorkspace) -> gtk::Button {
     let button = gtk::Button::new();
 
-    button.set_label(&workspace.name);
+    // button.set_label(&workspace.name);
+    let container = gtk::Box::new(Orientation::Horizontal, 0);
+    let label = gtk::Label::new(Some(&workspace.name));
+    label.set_halign(gtk4::Align::Center);
+    container.append(&label);
+    container.set_halign(gtk4::Align::Center);
+    button.set_child(Some(&container));
+    button.set_has_frame(false);
+    button.add_css_class("workspace");
+    button.add_css_class("circular");
 
     let workspace_id = workspace.id;
     button.connect_clicked(move |_b| {
@@ -31,7 +40,8 @@ fn workspace_button(workspace: &HyprlandWorkspace) -> gtk::Button {
 }
 
 fn workspaces_bar(monitor_id: i32) -> gtk::Widget {
-    let container = gtk::Box::new(Orientation::Horizontal, 1);
+    let container = gtk::Box::new(Orientation::Horizontal, 0);
+    container.set_widget_name("workspaces");
 
     glib::spawn_future_local(clone!(@weak container => async move {
         let hyprland_workspaces = HyprlandWorkspaces::instance().await;
@@ -171,6 +181,8 @@ fn bar_window(app: &Application, monitor: &Monitor) -> ApplicationWindow {
     window.set_layer(Layer::Top);
     window.auto_exclusive_zone_enable();
     window.set_monitor(monitor);
+    // We use this for the interactive UI debugger since we need ctrl+shift+I to open it.
+    window.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::OnDemand);
 
     window.set_anchor(Edge::Left, true);
     window.set_anchor(Edge::Top, true);
@@ -205,19 +217,21 @@ fn bar_window(app: &Application, monitor: &Monitor) -> ApplicationWindow {
                 label.set_text(&active_window.title);
             }
         }));
-        window.show();
+        window.set_visible(true);
     }));
 
     window
 }
 
 fn activate(app: &Application) {
-    // FIXME: Handle multiple monitors and remove / add bars as needed
     let display = Display::default().unwrap();
+
     let monitors = display.monitors();
     for i in 0..monitors.n_items() {
         bar_window(app, monitors.item(i).unwrap().dynamic_cast_ref().unwrap());
     }
+
+    gtk::set_debug_flags(DebugFlags::INTERACTIVE);
 }
 
 #[async_std::main]
@@ -225,6 +239,48 @@ async fn main() -> Result<glib::ExitCode, ()> {
     let app = Application::builder()
         .application_id("com.timwaterhouse.twbar")
         .build();
+
+    app.connect_startup(|_| {
+        let provider = CssProvider::new();
+        provider.load_from_string("
+.workspace {
+    padding: 5px;
+    margin-right: 5px;
+    border-radius: 10px;
+}
+
+#workspaces button {
+    padding: 5px;
+    margin-right: 5px;
+}
+
+#workspaces button.active {
+    border-radius: 10px;
+}
+
+#workspaces button:hover {
+    border-radius: 10px;
+}
+
+#workspaces {
+    opacity: 1;
+    padding: 0px 8px;
+    margin: 0px 3px;
+    border: 0px;
+}
+
+#workspaces {
+    padding-right: 0px;
+    padding-left: 5px;
+}
+        ");
+        gtk::style_context_add_provider_for_display(
+            &Display::default().unwrap(),
+            &provider,
+            // We want to override the user style. Otherwise nothing actually applies because I have most settings already set.
+            gtk::STYLE_PROVIDER_PRIORITY_USER,
+        );
+    });
 
     app.connect_activate(
         move |app| {
