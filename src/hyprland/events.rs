@@ -10,7 +10,9 @@ use gio::glib::clone::Downgrade;
 use super::utils::Utils;
 
 pub trait EventData: Clone {
-    fn parse(data: &str) -> Option<Self> where Self: Sized;
+    fn parse(data: &str) -> Option<Self>
+    where
+        Self: Sized;
 }
 
 #[derive(Clone, Debug)]
@@ -70,29 +72,38 @@ pub enum HyprlandEvent {
 }
 
 impl EventData for HyprlandEvent {
-    fn parse(message: &str) -> Option<Self> where Self: Sized {
+    fn parse(message: &str) -> Option<Self>
+    where
+        Self: Sized,
+    {
         if let Some((command, data)) = message.split_once(">>") {
             match command {
-              "workspace" => Some(Self::Workspace(data.to_owned())),
-              "workspacev2" => WorkspaceV2::parse(data).map(Self::WorkspaceV2),
-              "focusedmon" => FocusedMon::parse(data).map(Self::FocusedMon),
-              "activewindow" => ActiveWindow::parse(data).map(Self::ActiveWindow),
-              "activewindowv2" => Some(Self::ActiveWindowV2(format!("0x{}", data.to_owned()))),
-              "fullscreen" => Some(Self::Fullscreen(data == "1")),
-              "monitorremoved" => Some(Self::MonitorRemoved(data.to_owned())),
-              "monitoradded" => Some(Self::MonitorAdded(data.to_owned())),
-              "monitoraddedv2" => MonitorAddedV2::parse(data).map(Self::MonitorAddedV2),
-              "createworkspace" => Some(Self::CreateWorkspace(data.to_owned())),
-              "createworkspacev2" => CreateWorkspaceV2::parse(data).map(Self::CreateWorkspaceV2),
-              "destroyworkspace" => Some(Self::DestroyWorkspace(data.to_owned())),
-              "destroyworkspacev2" => DestroyWorkspaceV2::parse(data).map(Self::DestroyWorkspaceV2),
-              "moveworkspace" => MoveWorkspace::parse(data).map(Self::MoveWorkspace),
-              "moveworkspacev2" => MoveWorkspaceV2::parse(data).map(Self::MoveWorkspaceV2),
-              "renameworkspace" => RenameWorkspace::parse(data).map(Self::RenameWorkspace),
-              "openwindow" => OpenWindow::parse(data).map(Self::OpenWindow),
-              "closewindow" => Some(Self::CloseWindow(format!("0x{}", data.to_owned()))),
-              "movewindow" => MoveWindow::parse(data).map(Self::MoveWindow),
-              _ => { println!("Unhandled event: {}>>{}", command, data); None }
+                "workspace" => Some(Self::Workspace(data.to_owned())),
+                "workspacev2" => WorkspaceV2::parse(data).map(Self::WorkspaceV2),
+                "focusedmon" => FocusedMon::parse(data).map(Self::FocusedMon),
+                "activewindow" => ActiveWindow::parse(data).map(Self::ActiveWindow),
+                "activewindowv2" => Some(Self::ActiveWindowV2(format!("0x{}", data.to_owned()))),
+                "fullscreen" => Some(Self::Fullscreen(data == "1")),
+                "monitorremoved" => Some(Self::MonitorRemoved(data.to_owned())),
+                "monitoradded" => Some(Self::MonitorAdded(data.to_owned())),
+                "monitoraddedv2" => MonitorAddedV2::parse(data).map(Self::MonitorAddedV2),
+                "createworkspace" => Some(Self::CreateWorkspace(data.to_owned())),
+                "createworkspacev2" => CreateWorkspaceV2::parse(data).map(Self::CreateWorkspaceV2),
+                "destroyworkspace" => Some(Self::DestroyWorkspace(data.to_owned())),
+                "destroyworkspacev2" => {
+                    DestroyWorkspaceV2::parse(data).map(Self::DestroyWorkspaceV2)
+                }
+                "moveworkspace" => MoveWorkspace::parse(data).map(Self::MoveWorkspace),
+                "moveworkspacev2" => MoveWorkspaceV2::parse(data).map(Self::MoveWorkspaceV2),
+                "renameworkspace" => RenameWorkspace::parse(data).map(Self::RenameWorkspace),
+                "openwindow" => OpenWindow::parse(data).map(Self::OpenWindow),
+                "closewindow" => Some(Self::CloseWindow(format!("0x{}", data.to_owned()))),
+                "movewindow" => MoveWindow::parse(data).map(Self::MoveWindow),
+                "movewindowv2" => MoveWindowV2::parse(data).map(Self::MoveWindowV2),
+                _ => {
+                    println!("Unhandled event: {}>>{}", command, data);
+                    None
+                }
             }
         } else {
             None
@@ -108,7 +119,10 @@ pub struct MonitorAddedV2 {
 }
 
 impl EventData for MonitorAddedV2 {
-    fn parse(data: &str) -> Option<Self> where Self: Sized {
+    fn parse(data: &str) -> Option<Self>
+    where
+        Self: Sized,
+    {
         let mut parts = data.splitn(3, ',');
         Some(Self {
             id: parts.next()?.to_owned(),
@@ -125,7 +139,10 @@ pub struct CreateWorkspaceV2 {
 }
 
 impl EventData for CreateWorkspaceV2 {
-    fn parse(data: &str) -> Option<Self> where Self: Sized {
+    fn parse(data: &str) -> Option<Self>
+    where
+        Self: Sized,
+    {
         let (id, name) = data.split_once(',')?;
         Some(Self {
             id: id.to_owned(),
@@ -141,7 +158,10 @@ pub struct DestroyWorkspaceV2 {
 }
 
 impl EventData for DestroyWorkspaceV2 {
-    fn parse(data: &str) -> Option<Self> where Self: Sized {
+    fn parse(data: &str) -> Option<Self>
+    where
+        Self: Sized,
+    {
         let (id, name) = data.split_once(',')?;
         Some(Self {
             id: id.to_owned(),
@@ -157,7 +177,10 @@ pub struct MoveWorkspace {
 }
 
 impl EventData for MoveWorkspace {
-    fn parse(data: &str) -> Option<Self> where Self: Sized {
+    fn parse(data: &str) -> Option<Self>
+    where
+        Self: Sized,
+    {
         let (name, monitor_name) = data.split_once(',')?;
         Some(Self {
             name: name.to_owned(),
@@ -174,7 +197,10 @@ pub struct MoveWorkspaceV2 {
 }
 
 impl EventData for MoveWorkspaceV2 {
-    fn parse(data: &str) -> Option<Self> where Self: Sized {
+    fn parse(data: &str) -> Option<Self>
+    where
+        Self: Sized,
+    {
         let mut parts = data.splitn(3, ',');
         Some(Self {
             id: parts.next()?.to_owned(),
@@ -191,7 +217,10 @@ pub struct RenameWorkspace {
 }
 
 impl EventData for RenameWorkspace {
-    fn parse(data: &str) -> Option<Self> where Self: Sized {
+    fn parse(data: &str) -> Option<Self>
+    where
+        Self: Sized,
+    {
         let (id, new_name) = data.split_once(',')?;
         Some(Self {
             id: id.to_owned(),
@@ -221,7 +250,10 @@ pub struct OpenWindow {
 }
 
 impl EventData for OpenWindow {
-    fn parse(data: &str) -> Option<Self> where Self: Sized {
+    fn parse(data: &str) -> Option<Self>
+    where
+        Self: Sized,
+    {
         let mut parts = data.splitn(4, ',');
         Some(Self {
             address: format!("0x{}", parts.next()?.to_owned()),
@@ -235,11 +267,14 @@ impl EventData for OpenWindow {
 #[derive(Clone, Debug)]
 pub struct MoveWindow {
     pub window_address: String,
-    pub workspace_name: String
+    pub workspace_name: String,
 }
 
 impl EventData for MoveWindow {
-    fn parse(data: &str) -> Option<Self> where Self: Sized {
+    fn parse(data: &str) -> Option<Self>
+    where
+        Self: Sized,
+    {
         let (window_address, workspace_name) = data.split_once(',')?;
         Some(Self {
             window_address: window_address.to_owned(),
@@ -256,7 +291,10 @@ pub struct MoveWindowV2 {
 }
 
 impl EventData for MoveWindowV2 {
-    fn parse(data: &str) -> Option<Self> where Self: Sized {
+    fn parse(data: &str) -> Option<Self>
+    where
+        Self: Sized,
+    {
         let mut parts = data.splitn(3, ',');
         Some(Self {
             window_address: format!("0x{}", parts.next()?.to_owned()),
@@ -312,7 +350,7 @@ pub struct WorkspaceV2 {
 impl EventData for WorkspaceV2 {
     fn parse(data: &str) -> Option<Self> {
         let (id, name) = data.split_once(',')?;
-        
+
         Some(Self {
             id: id.to_owned(),
             name: name.to_owned(),
@@ -329,7 +367,7 @@ pub struct FocusedMon {
 impl EventData for FocusedMon {
     fn parse(data: &str) -> Option<Self> {
         let (id, name) = data.split_once(',')?;
-        
+
         Some(Self {
             id: id.to_owned(),
             name: name.to_owned(),
@@ -345,17 +383,15 @@ pub struct ActiveWindow {
 impl EventData for ActiveWindow {
     fn parse(data: &str) -> Option<Self> {
         let (_class_name, title) = data.split_once(',')?;
-        
+
         Some(Self {
-            title: title.to_owned()
+            title: title.to_owned(),
         })
     }
 }
 
 #[derive(Clone)]
-pub struct Workspace {
-
-}
+pub struct Workspace {}
 
 pub(super) struct LatestEventValue<T> {
     pub current_value: Mutex<(i64, T)>,
@@ -377,7 +413,10 @@ impl<T: Clone + Default> LatestEventValue<T> {
         self.trigger.notify_all();
     }
 
-    pub async fn update_fn<F>(&self, update_func: F) where F: FnOnce(&T) -> Option<T> {
+    pub async fn update_fn<F>(&self, update_func: F)
+    where
+        F: FnOnce(&T) -> Option<T>,
+    {
         let mut data_lock = self.current_value.lock().await;
         let updated_data = (update_func)(&data_lock.1);
         if updated_data.is_some() {
@@ -425,7 +464,7 @@ pub struct HyprlandEvents {
 impl HyprlandEvents {
     pub async fn instance() -> Arc<Self> {
         static INSTANCE: Mutex<Weak<HyprlandEvents>> = Mutex::new(Weak::new());
-        
+
         let mut mutex_guard = INSTANCE.lock().await;
         match mutex_guard.upgrade() {
             Some(instance) => instance,
@@ -446,7 +485,7 @@ impl HyprlandEvents {
         let instance = Arc::new(HyprlandEvents {
             active_window,
             event_sender: Arc::new(Mutex::new(sender)),
-            event_receiver: receiver.deactivate()
+            event_receiver: receiver.deactivate(),
         });
 
         let instance_weak = instance.downgrade();
@@ -463,7 +502,9 @@ impl HyprlandEvents {
 
                 if let Some(event) = HyprlandEvent::parse(&line) {
                     match &event {
-                        HyprlandEvent::ActiveWindow(active_window) => instance.active_window.update(active_window.clone()).await,
+                        HyprlandEvent::ActiveWindow(active_window) => {
+                            instance.active_window.update(active_window.clone()).await
+                        }
                         _ => (),
                     };
 
