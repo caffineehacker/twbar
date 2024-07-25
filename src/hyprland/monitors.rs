@@ -1,7 +1,13 @@
-use async_std::{sync::{Arc, Mutex, Weak}, task};
+use async_std::{
+    sync::{Arc, Mutex, Weak},
+    task,
+};
 use serde::Deserialize;
 
-use super::{commands::HyprlandCommands, events::{HyprlandEvents, LatestEventValue, LatestEventValueListener}};
+use super::{
+    commands::HyprlandCommands,
+    events::{HyprlandEvent, HyprlandEvents, LatestEventValue, LatestEventValueListener},
+};
 
 #[derive(Clone, Default, Deserialize)]
 pub struct HyprlandMonitor {
@@ -13,19 +19,19 @@ pub struct HyprlandMonitor {
     pub serial: String,
     pub width: u32,
     pub height: u32,
-    #[serde(rename = "refreshRate")] 
+    #[serde(rename = "refreshRate")]
     pub refresh_rate: f32,
     pub x: u32,
     pub y: u32,
-    #[serde(rename = "activeWorkspace")] 
+    #[serde(rename = "activeWorkspace")]
     pub active_workspace: MonitorWorkspace,
-    #[serde(rename = "specialWorkspace")] 
+    #[serde(rename = "specialWorkspace")]
     pub special_workspace: MonitorWorkspace,
     pub reserved: Vec<u32>,
     pub scale: f32,
     pub transform: u32,
     pub focused: bool,
-    #[serde(rename = "dpmsStatus")] 
+    #[serde(rename = "dpmsStatus")]
     pub dpms_status: bool,
     pub vrr: bool,
     #[serde(rename = "activelyTearing")]
@@ -39,8 +45,8 @@ pub struct HyprlandMonitor {
 
 #[derive(Clone, Default, Deserialize)]
 pub struct MonitorWorkspace {
-    id: u32,
-    name: String,
+    pub id: u32,
+    pub name: String,
 }
 
 pub struct HyprlandMonitors {
@@ -50,7 +56,7 @@ pub struct HyprlandMonitors {
 impl HyprlandMonitors {
     pub async fn instance() -> Arc<Self> {
         static INSTANCE: Mutex<Weak<HyprlandMonitors>> = Mutex::new(Weak::new());
-        
+
         let mut mutex_guard = INSTANCE.lock().await;
         match mutex_guard.upgrade() {
             Some(instance) => instance,
@@ -79,7 +85,11 @@ impl HyprlandMonitors {
 
                 loop {
                     let event = events.recv().await.unwrap();
-                    {}
+                    match event {
+                        HyprlandEvent::MonitorAdded(_) => instance.force_refresh().await,
+                        HyprlandEvent::MonitorRemoved(_) => instance.force_refresh().await,
+                        _ => {}
+                    }
                 }
             });
         }
@@ -88,18 +98,24 @@ impl HyprlandMonitors {
     }
 
     pub async fn force_refresh(&self) {
-        self.monitors.update_fn(| _ | {
-            task::block_on(async {
-                let monitors = HyprlandCommands::send_command("j/monitors").await;
-                let deserialized = serde_json::from_str::<Vec<HyprlandMonitor>>(&monitors);
-                if deserialized.is_err() {
-                    println!("Failed to deserialize: {}, {}", monitors, deserialized.err().unwrap());
-                    return None;
-                }
+        self.monitors
+            .update_fn(|_| {
+                task::block_on(async {
+                    let monitors = HyprlandCommands::send_command("j/monitors").await;
+                    let deserialized = serde_json::from_str::<Vec<HyprlandMonitor>>(&monitors);
+                    if deserialized.is_err() {
+                        println!(
+                            "Failed to deserialize: {}, {}",
+                            monitors,
+                            deserialized.err().unwrap()
+                        );
+                        return None;
+                    }
 
-                Some(deserialized.unwrap())
+                    Some(deserialized.unwrap())
+                })
             })
-        }).await;
+            .await;
     }
 
     pub fn get_monitor_state_emitter(&self) -> LatestEventValueListener<Vec<HyprlandMonitor>> {

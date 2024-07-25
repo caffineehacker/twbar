@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use glib::clone;
 use gtk::prelude::*;
 use gtk::{glib, Application, ApplicationWindow};
@@ -51,7 +53,7 @@ fn workspaces_bar(monitor_id: i32) -> gtk::Widget {
             let workspaces = workspaces_state.next().await;
             let mut workspaces: Vec<HyprlandWorkspace> = workspaces.into_iter().filter(|w| w.monitor_id == monitor_id).collect();
             workspaces.sort_by_key(|w| w.id);
-            
+
             println!("Redoing workspace buttons");
             while let Some(button) = container.first_child() {
                 container.remove(&button);
@@ -83,13 +85,21 @@ fn taskbar_button(window: &HyprlandWindow, cache: &XdgApplicationsCache) -> Butt
     button
 }
 
-fn update_taskbar_button(button: &Button, current_window: &HyprlandWindow, previous_window: Option<&HyprlandWindow>, cache: &XdgApplicationsCache) {
+fn update_taskbar_button(
+    button: &Button,
+    current_window: &HyprlandWindow,
+    previous_window: Option<&HyprlandWindow>,
+    cache: &XdgApplicationsCache,
+) {
     if !current_window.title.is_empty() {
         // Any tooltip currently seg faults on hover for some reason...
         // button.set_tooltip_text(Some(&current_window.title));
     }
 
-    if previous_window.is_some_and(|pw| pw.class != current_window.class || pw.initial_class != current_window.initial_class) || previous_window.is_none() {
+    if previous_window.is_some_and(|pw| {
+        pw.class != current_window.class || pw.initial_class != current_window.initial_class
+    }) || previous_window.is_none()
+    {
         let mut app_info = cache.get_application_by_class(&current_window.initial_class);
         if app_info.is_none() {
             app_info = cache.get_application_by_class(&current_window.class);
@@ -174,7 +184,7 @@ fn taskbar_widget(monitor: i32) -> Widget {
     container.into()
 }
 
-fn bar_window(app: &Application, monitor: &Monitor) -> ApplicationWindow {
+fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> ApplicationWindow {
     let window = ApplicationWindow::new(app);
 
     window.init_layer_shell();
@@ -190,7 +200,7 @@ fn bar_window(app: &Application, monitor: &Monitor) -> ApplicationWindow {
     window.set_anchor(Edge::Bottom, false);
     window.set_default_height(1);
 
-    let connector = monitor.connector().map(|c| c.as_str().to_owned()).unwrap_or("".to_owned());
+    let connector = connector.to_owned();
     glib::spawn_future_local(clone!(@strong window => async move {
         let hyprland_monitors = HyprlandMonitors::instance().await;
         let mut monitors_emitter = hyprland_monitors.get_monitor_state_emitter();
@@ -200,10 +210,10 @@ fn bar_window(app: &Application, monitor: &Monitor) -> ApplicationWindow {
         let hbox = gtk::Box::new(Orientation::Horizontal, 8);
         hbox.append(&workspaces_bar(hyprland_monitor.id));
         hbox.append(&taskbar_widget(hyprland_monitor.id));
-        
+
         let vbox = gtk::Box::new(Orientation::Vertical, 1);
         vbox.append(&hbox);
-        
+
         let label = Label::new(Some("Window Label"));
         vbox.append(&label);
         window.set_child(Some(&vbox));
@@ -227,9 +237,71 @@ fn activate(app: &Application) {
     let display = Display::default().unwrap();
 
     let monitors = display.monitors();
+    let mut windows = HashMap::new();
     for i in 0..monitors.n_items() {
-        bar_window(app, monitors.item(i).unwrap().dynamic_cast_ref().unwrap());
+        let monitor = monitors.item(i).unwrap();
+        let monitor: &Monitor = monitor.dynamic_cast_ref().unwrap();
+        let connector = monitor
+            .connector()
+            .map(|c| c.as_str().to_owned())
+            .unwrap_or("".to_owned());
+        windows.insert(
+            connector.clone(),
+            bar_window(app, monitor, &connector).downgrade(),
+        );
     }
+
+    glib::spawn_future_local(clone!(@weak app => async move {
+        let monitor_events = HyprlandMonitors::instance().await;
+        let mut monitor_stream = monitor_events.get_monitor_state_emitter();
+
+        loop {
+            let _ = monitor_stream.next().await;
+
+            println!("Monitors changed!");
+
+            let display = Display::default().unwrap();
+            let gdk_monitors = display.monitors();
+
+            // First remove any windows that are not in the new list
+            'windows_loop: for (connector, window) in windows.clone().iter() {
+                for i in 0..gdk_monitors.n_items() {
+                    let gdk_monitor = gdk_monitors.item(i).unwrap();
+                    let gdk_monitor: &Monitor = gdk_monitor.dynamic_cast_ref().unwrap();
+                    let gdk_connector = gdk_monitor
+                        .connector()
+                        .map(|c| c.as_str().to_owned()).unwrap();
+
+                    if gdk_connector == *connector {
+                        println!("Monitor {} is still connected", connector);
+                        continue 'windows_loop
+                    }
+                }
+
+                if let Some(window) = window.upgrade() {
+                    window.close();
+                }
+                windows.remove(connector.as_str());
+            }
+
+            // Now add new monitors
+            for i in 0..gdk_monitors.n_items() {
+                let gdk_monitor = gdk_monitors.item(i).unwrap();
+                let gdk_monitor: &Monitor = gdk_monitor.dynamic_cast_ref().unwrap();
+                let gdk_connector = gdk_monitor
+                    .connector()
+                    .map(|c| c.as_str().to_owned()).unwrap();
+
+                if !windows.contains_key(&gdk_connector) {
+                    println!("New monitor found: {}", gdk_connector);
+                    windows.insert(
+                        gdk_connector.clone(),
+                        bar_window(&app, gdk_monitor, &gdk_connector).downgrade(),
+                    );
+                }
+            }
+        }
+    }));
 
     gtk::set_debug_flags(DebugFlags::INTERACTIVE);
 }
@@ -242,7 +314,8 @@ async fn main() -> Result<glib::ExitCode, ()> {
 
     app.connect_startup(|_| {
         let provider = CssProvider::new();
-        provider.load_from_string("
+        provider.load_from_string(
+            "
 .workspace {
     padding: 5px;
     margin-right: 5px;
@@ -273,7 +346,8 @@ async fn main() -> Result<glib::ExitCode, ()> {
     padding-right: 0px;
     padding-left: 5px;
 }
-        ");
+        ",
+        );
         gtk::style_context_add_provider_for_display(
             &Display::default().unwrap(),
             &provider,
@@ -282,11 +356,7 @@ async fn main() -> Result<glib::ExitCode, ()> {
         );
     });
 
-    app.connect_activate(
-        move |app| {
-            activate(app)
-        }
-    );
+    app.connect_activate(move |app| activate(app));
 
     Ok(app.run())
 }
