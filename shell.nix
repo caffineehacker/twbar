@@ -1,6 +1,6 @@
 { pkgs ? import <nixpkgs> {} }:
 pkgs.mkShell {
-  buildInputs = with pkgs; [ rustc cargo gcc rustfmt clippy gtk4 gtk4-layer-shell ];
+  buildInputs = with pkgs; [ rustc cargo gcc rustfmt clippy gtk4 gtk4-layer-shell vscodium ];
   nativeBuildInputs = with pkgs; [
     pkg-config
   ];
