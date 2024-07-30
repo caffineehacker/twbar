@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-gtk4 = { version = "*", features = ["v4_14"] }
+gtk4 = { version = "0.9.0", features = ["v4_14"] }
+gdk4-wayland = { version = "0.9.0", features = ["v4_12", "wayland_crate"] }
 gtk4-layer-shell = "*"
 gio = "*"
 async-channel = "*"
