@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
 
+use async_std::task;
 use gdk4_wayland::WaylandMonitor;
 use glib::clone;
 use gtk4::gdk::{Display, Monitor};
@@ -11,9 +12,11 @@ use gtk4::{self as gtk, Button, CssProvider, DebugFlags, Label, Orientation, Wid
 use gtk4::{glib, prelude::*};
 use gtk4::{prelude::*, Application, ApplicationWindow};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
+use gtk_output::GtkOutputs;
 use std::process::Command;
 use wayland_client::Proxy;
 
+mod gtk_output;
 mod hyprland;
 mod xdg_applications;
 
@@ -329,26 +332,13 @@ fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> Applicat
 }
 
 fn activate(app: &Application) {
-    /*
-    TODO: I need to get the wl_output from the WaylandMonitor object and then subscribe to updates for it via
-    XdgOutputManager. Then when we get the name event we should be able to match it to the Hyprland Monitor and
-    ensure our index is correct.
-
-    */
     let display = Display::default().unwrap();
 
     let monitors = display.monitors();
     let windows = Arc::new(RefCell::new(HashMap::new()));
     for i in 0..monitors.n_items() {
         let monitor = monitors.item(i).unwrap();
-        let wayland_monitor: &WaylandMonitor = monitor.dynamic_cast_ref().unwrap();
-
         let monitor: &Monitor = monitor.dynamic_cast_ref().unwrap();
-        println!(
-            "Connector: {}, Description: {}",
-            monitor.connector().unwrap().as_str(),
-            monitor.description().unwrap().as_str()
-        );
         if let Some(connector) = monitor.connector().map(|c| c.as_str().to_owned()) {
             windows.borrow_mut().insert(
                 connector.clone(),
@@ -357,49 +347,81 @@ fn activate(app: &Application) {
         }
     }
 
-    monitors.connect_items_changed(clone!(
+    glib::spawn_future_local(clone!(
         #[weak]
         app,
         #[strong]
-        windows,
-        move |monitors, _position, _removed, _added| {
-            let mut windows = windows.borrow_mut();
-            // First remove any windows that are not in the new list
-            'windows_loop: for (connector, window) in windows.clone().iter() {
-                for i in 0..monitors.n_items() {
-                    let gdk_monitor = monitors.item(i).unwrap();
-                    let gdk_monitor: &Monitor = gdk_monitor.dynamic_cast_ref().unwrap();
-                    if let Some(gdk_connector) =
-                        gdk_monitor.connector().map(|c| c.as_str().to_owned())
-                    {
-                        if gdk_connector == *connector {
-                            println!("Monitor {} is still connected", connector);
-                            continue 'windows_loop;
+        monitors,
+        async move {
+            let gtk_outputs = GtkOutputs::instance().await;
+            monitors.connect_items_changed(clone!(
+                #[weak]
+                app,
+                #[strong]
+                windows,
+                #[strong]
+                gtk_outputs,
+                move |monitors, _position, _removed, _added| {
+                    glib::spawn_future_local(clone!(
+                        #[weak]
+                        app,
+                        #[strong]
+                        windows,
+                        #[strong]
+                        monitors,
+                        #[strong]
+                        gtk_outputs,
+                        async move {
+                            let mut windows = windows.borrow_mut();
+                            let monitor_names = (0..monitors.n_items())
+                                .map(|index| {
+                                    let gdk_monitor = monitors.item(index).unwrap();
+                                    let gdk_monitor: &Monitor =
+                                        gdk_monitor.dynamic_cast_ref().unwrap();
+                                    if let Some(gdk_connector) =
+                                        gdk_monitor.connector().map(|c| c.as_str().to_owned())
+                                    {
+                                        (gdk_monitor.clone(), gdk_connector)
+                                    } else {
+                                        let gtk_outputs = gtk_outputs.clone();
+                                        (
+                                            gdk_monitor.clone(),
+                                            task::block_on(async move {
+                                                gtk_outputs.get_name(gdk_monitor).await
+                                            }),
+                                        )
+                                    }
+                                })
+                                .collect::<Vec<(Monitor, String)>>();
+                            // First remove any windows that are not in the new list
+                            'windows_loop: for (connector, window) in windows.clone().iter() {
+                                for (_, name) in monitor_names.iter() {
+                                    if *name == *connector {
+                                        println!("Monitor {} is still connected", connector);
+                                        continue 'windows_loop;
+                                    }
+                                }
+
+                                if let Some(window) = window.upgrade() {
+                                    window.close();
+                                }
+                                windows.remove(connector.as_str());
+                            }
+
+                            // Now add new monitors
+                            for (monitor, name) in monitor_names.iter() {
+                                if !windows.contains_key(name) {
+                                    println!("New monitor found: {}", name);
+                                    windows.insert(
+                                        name.clone(),
+                                        bar_window(&app, monitor, name).downgrade(),
+                                    );
+                                }
+                            }
                         }
-                    }
+                    ));
                 }
-
-                if let Some(window) = window.upgrade() {
-                    window.close();
-                }
-                windows.remove(connector.as_str());
-            }
-
-            // Now add new monitors
-            for i in 0..monitors.n_items() {
-                let gdk_monitor = monitors.item(i).unwrap();
-                let gdk_monitor: &Monitor = gdk_monitor.dynamic_cast_ref().unwrap();
-                if let Some(gdk_connector) = gdk_monitor.connector().map(|c| c.as_str().to_owned())
-                {
-                    if !windows.contains_key(&gdk_connector) {
-                        println!("New monitor found: {}", gdk_connector);
-                        windows.insert(
-                            gdk_connector.clone(),
-                            bar_window(&app, gdk_monitor, &gdk_connector).downgrade(),
-                        );
-                    }
-                }
-            }
+            ));
         }
     ));
 
