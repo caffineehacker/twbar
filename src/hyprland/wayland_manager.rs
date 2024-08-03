@@ -1,5 +1,4 @@
 use std::{
-    borrow::{Borrow, BorrowMut},
     collections::{HashMap, HashSet},
     ops::DerefMut,
 };
@@ -12,7 +11,6 @@ use async_std::{
 use wayland_client::{
     backend::ObjectId,
     event_created_child,
-    globals::{registry_queue_init, GlobalListContents},
     protocol::{wl_output::WlOutput, wl_registry},
     Connection, Dispatch, Proxy, QueueHandle,
 };
@@ -493,17 +491,14 @@ impl Dispatch<ZwlrOutputManagerV1, ()> for WaylandDispatchReceiver {
         _qhandle: &QueueHandle<Self>,
     ) {
         task::block_on(async {
-            match event {
-                zwlr_output_manager_v1::Event::Done { serial: _ } => {
-                    state
-                        .output_event_sender
-                        .broadcast_direct(OutputEvent::OutputsUpdated(
-                            state.outputs_state.read().await.values().cloned().collect(),
-                        ))
-                        .await
-                        .ok();
-                }
-                _ => {}
+            if let zwlr_output_manager_v1::Event::Done { serial: _ } = event {
+                state
+                    .output_event_sender
+                    .broadcast_direct(OutputEvent::OutputsUpdated(
+                        state.outputs_state.read().await.values().cloned().collect(),
+                    ))
+                    .await
+                    .ok();
             }
         });
     }

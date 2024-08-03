@@ -4,13 +4,12 @@ use std::process::Stdio;
 use std::sync::Arc;
 
 use async_std::task;
-use gdk4_wayland::WaylandMonitor;
 use glib::clone;
 use gtk4::gdk::{Display, Monitor};
 use gtk4::prelude::DisplayExt;
 use gtk4::{self as gtk, Button, CssProvider, DebugFlags, Label, Orientation, Widget};
 use gtk4::{glib, prelude::*};
-use gtk4::{prelude::*, Application, ApplicationWindow};
+use gtk4::{Application, ApplicationWindow};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use gtk_output::GtkOutputs;
 use std::process::Command;
@@ -530,7 +529,7 @@ async fn main() -> Result<glib::ExitCode, ()> {
         );
     });
 
-    app.connect_activate(move |app| activate(app));
+    app.connect_activate(activate);
 
     Ok(app.run())
 }

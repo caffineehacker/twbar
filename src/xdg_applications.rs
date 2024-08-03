@@ -58,10 +58,7 @@ impl XdgApplicationsCache {
         for outer in matches {
             for desktop_id in outer {
                 println!("Found match {} -> {}", class_name, desktop_id);
-                match gio::DesktopAppInfo::new(desktop_id.as_str()) {
-                    Some(info) => { return Some(info); },
-                    _ => {},
-                }
+                if let Some(info) = gio::DesktopAppInfo::new(desktop_id.as_str()) { return Some(info); }
             }
         }
 

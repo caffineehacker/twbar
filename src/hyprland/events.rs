@@ -501,11 +501,8 @@ impl HyprlandEvents {
                 let instance = instance.as_ref().unwrap();
 
                 if let Some(event) = HyprlandEvent::parse(&line) {
-                    match &event {
-                        HyprlandEvent::ActiveWindow(active_window) => {
-                            instance.active_window.update(active_window.clone()).await
-                        }
-                        _ => (),
+                    if let HyprlandEvent::ActiveWindow(active_window) = &event {
+                        instance.active_window.update(active_window.clone()).await
                     };
 
                     let event_sender = instance.event_sender.lock().await;

@@ -8,7 +8,7 @@ use gtk4::{
     prelude::DisplayExtManual,
 };
 use wayland_client::{
-    globals::{self, registry_queue_init, GlobalListContents},
+    globals::{registry_queue_init, GlobalListContents},
     protocol::wl_registry::WlRegistry,
     Connection, Dispatch, EventQueue, Proxy,
 };
