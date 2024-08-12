@@ -13,10 +13,11 @@ use gtk4::{Application, ApplicationWindow};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use gtk_output::GtkOutputs;
 use std::process::Command;
-use wayland_client::Proxy;
+use widgets::workspace_button::WorkspaceButton;
 
 mod gtk_output;
 mod hyprland;
+mod widgets;
 mod xdg_applications;
 
 use hyprland::commands::HyprlandCommands;
@@ -76,30 +77,6 @@ fn launch_wofi_button() -> Button {
 //                 tooltip = false;
 //               };
 
-fn workspace_button(workspace: &HyprlandWorkspace) -> gtk::Button {
-    let button = gtk::Button::new();
-
-    let container = gtk::Box::new(Orientation::Horizontal, 0);
-    let label = gtk::Label::new(Some(&workspace.name));
-    label.set_halign(gtk4::Align::Center);
-    container.append(&label);
-    container.set_halign(gtk4::Align::Center);
-    button.set_child(Some(&container));
-    button.set_has_frame(false);
-    button.add_css_class("workspace");
-    button.add_css_class("circular");
-    button.set_focusable(false);
-
-    let workspace_id = workspace.id;
-    button.connect_clicked(move |_b| {
-        glib::spawn_future_local(async move {
-            HyprlandCommands::set_active_workspace(workspace_id).await;
-        });
-    });
-
-    button
-}
-
 fn workspaces_bar(monitor_id: i32) -> gtk::Widget {
     let container = gtk::Box::new(Orientation::Horizontal, 0);
     container.set_widget_name("workspaces");
@@ -125,7 +102,24 @@ fn workspaces_bar(monitor_id: i32) -> gtk::Widget {
                 }
 
                 for workspace in workspaces.iter() {
-                    container.append(&workspace_button(workspace));
+                    container.append(&WorkspaceButton::new(workspace));
+                }
+            }
+        }
+    ));
+
+    glib::spawn_future_local(clone!(
+        #[weak]
+        container,
+        async move {
+            let hyprland_workspaces = HyprlandWorkspaces::instance().await;
+            let mut active_workspace_id = hyprland_workspaces.get_active_workspace_id_state();
+
+            loop {
+                let active_workspace_id = active_workspace_id.next().await;
+                let mut next_child = container.first_child();
+                while let Some(child) = next_child {
+                    next_child = child.next_sibling();
                 }
             }
         }

@@ -1,33 +1,40 @@
-use async_std::{sync::{Arc, Mutex, Weak}, task};
+use async_std::{
+    sync::{Arc, Mutex, RwLock, Weak},
+    task,
+};
 use gio::glib::clone::Downgrade;
 use serde::Deserialize;
 
-use super::{commands::HyprlandCommands, events::{HyprlandEvents, LatestEventValue, LatestEventValueListener}};
+use super::{
+    commands::HyprlandCommands,
+    events::{HyprlandEvents, LatestEventValue, LatestEventValueListener},
+};
 
 #[derive(Clone, Default, Deserialize)]
 pub struct HyprlandWorkspace {
     pub id: i32,
     pub name: String,
     pub monitor: String,
-    #[serde(rename = "monitorID")] 
+    #[serde(rename = "monitorID")]
     pub monitor_id: i32,
     pub windows: i32,
-    #[serde(rename = "hasfullscreen")] 
+    #[serde(rename = "hasfullscreen")]
     pub has_fullscreen: bool,
-    #[serde(rename = "lastwindow")] 
+    #[serde(rename = "lastwindow")]
     pub last_window: String,
-    #[serde(rename = "lastwindowtitle")] 
+    #[serde(rename = "lastwindowtitle")]
     pub last_window_title: String,
 }
 
 pub struct HyprlandWorkspaces {
     workspaces: Arc<LatestEventValue<Vec<HyprlandWorkspace>>>,
+    active_workspace_id: Arc<LatestEventValue<String>>,
 }
 
 impl HyprlandWorkspaces {
     pub async fn instance() -> Arc<Self> {
         static INSTANCE: Mutex<Weak<HyprlandWorkspaces>> = Mutex::new(Weak::new());
-        
+
         let mut mutex_guard = INSTANCE.lock().await;
         match mutex_guard.upgrade() {
             Some(instance) => instance,
@@ -44,6 +51,7 @@ impl HyprlandWorkspaces {
 
         let instance = Arc::new(Self {
             workspaces: workspaces.clone(),
+            active_workspace_id: Arc::new(LatestEventValue::new()),
         });
 
         {
@@ -56,15 +64,33 @@ impl HyprlandWorkspaces {
                 loop {
                     let event = events.recv().await.unwrap();
                     match event {
-                        super::events::HyprlandEvent::CreateWorkspace(_) => instance.upgrade().unwrap().force_refresh().await,
-                        super::events::HyprlandEvent::CreateWorkspaceV2(_) => {},
-                        super::events::HyprlandEvent::MoveWorkspace(_) => instance.upgrade().unwrap().force_refresh().await,
-                        super::events::HyprlandEvent::MoveWorkspaceV2(_) => {},
-                        super::events::HyprlandEvent::RenameWorkspace(_) => instance.upgrade().unwrap().force_refresh().await,
-                        super::events::HyprlandEvent::ActiveSpecial(_) => instance.upgrade().unwrap().force_refresh().await,
-                        super::events::HyprlandEvent::DestroyWorkspace(_) => instance.upgrade().unwrap().force_refresh().await,
-                        super::events::HyprlandEvent::DestroyWorkspaceV2(_) => {},
-                        _ => {},
+                        super::events::HyprlandEvent::CreateWorkspace(_) => {
+                            instance.upgrade().unwrap().force_refresh().await
+                        }
+                        super::events::HyprlandEvent::CreateWorkspaceV2(_) => {}
+                        super::events::HyprlandEvent::MoveWorkspace(_) => {
+                            instance.upgrade().unwrap().force_refresh().await
+                        }
+                        super::events::HyprlandEvent::MoveWorkspaceV2(_) => {}
+                        super::events::HyprlandEvent::RenameWorkspace(_) => {
+                            instance.upgrade().unwrap().force_refresh().await
+                        }
+                        super::events::HyprlandEvent::ActiveSpecial(_) => {
+                            instance.upgrade().unwrap().force_refresh().await
+                        }
+                        super::events::HyprlandEvent::DestroyWorkspace(_) => {
+                            instance.upgrade().unwrap().force_refresh().await
+                        }
+                        super::events::HyprlandEvent::DestroyWorkspaceV2(_) => {}
+                        super::events::HyprlandEvent::WorkspaceV2(workspace) => {
+                            instance
+                                .upgrade()
+                                .unwrap()
+                                .active_workspace_id
+                                .update(workspace.id)
+                                .await;
+                        }
+                        _ => {}
                     }
                 }
             });
@@ -74,21 +100,31 @@ impl HyprlandWorkspaces {
     }
 
     pub async fn force_refresh(&self) {
-        self.workspaces.update_fn(| _ | {
-            task::block_on(async {
-                let workspaces = HyprlandCommands::send_command("j/workspaces").await;
-                let deserialized = serde_json::from_str::<Vec<HyprlandWorkspace>>(&workspaces);
-                if deserialized.is_err() {
-                    println!("Failed to deserialize: {}, {}", workspaces, deserialized.err().unwrap());
-                    return None;
-                }
+        self.workspaces
+            .update_fn(|_| {
+                task::block_on(async {
+                    let workspaces = HyprlandCommands::send_command("j/workspaces").await;
+                    let deserialized = serde_json::from_str::<Vec<HyprlandWorkspace>>(&workspaces);
+                    if deserialized.is_err() {
+                        println!(
+                            "Failed to deserialize: {}, {}",
+                            workspaces,
+                            deserialized.err().unwrap()
+                        );
+                        return None;
+                    }
 
-                Some(deserialized.unwrap())
+                    Some(deserialized.unwrap())
+                })
             })
-        }).await;
+            .await;
     }
 
     pub fn get_workspaces_state_emitter(&self) -> LatestEventValueListener<Vec<HyprlandWorkspace>> {
         LatestEventValueListener::new(self.workspaces.clone())
+    }
+
+    pub fn get_active_workspace_id_state(&self) -> LatestEventValueListener<String> {
+        LatestEventValueListener::new(self.active_workspace_id.clone())
     }
 }
