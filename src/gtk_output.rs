@@ -1,12 +1,8 @@
-use std::{
-    borrow::{Borrow, BorrowMut},
-    cell::{Cell, RefCell},
-    sync::{Arc, Weak},
-};
+use std::sync::{Arc, Weak};
 
 use async_std::{sync::Mutex, task};
 use gdk4_wayland::{WaylandDisplay, WaylandMonitor};
-use gio::{glib::property::PropertyGet, prelude::Cast};
+use gio::prelude::Cast;
 use gtk4::{
     gdk::{Display, Monitor},
     prelude::DisplayExtManual,

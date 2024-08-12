@@ -54,7 +54,7 @@ impl ButtonImpl for WorkspaceButtonImpl {
     fn activate(&self) {
         println!("Activating workspace");
 
-        let workspace_id = self.workspace_id.borrow().clone();
+        let workspace_id = *self.workspace_id.borrow();
         glib::spawn_future_local(async move {
             HyprlandCommands::set_active_workspace(workspace_id).await;
         });

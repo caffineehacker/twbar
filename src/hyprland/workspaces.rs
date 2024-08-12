@@ -1,5 +1,5 @@
 use async_std::{
-    sync::{Arc, Mutex, RwLock, Weak},
+    sync::{Arc, Mutex, Weak},
     task,
 };
 use gio::glib::clone::Downgrade;
