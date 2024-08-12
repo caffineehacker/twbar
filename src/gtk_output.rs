@@ -1,8 +1,12 @@
-use std::sync::{Arc, Weak};
+use std::{
+    borrow::{Borrow, BorrowMut},
+    cell::{Cell, RefCell},
+    sync::{Arc, Weak},
+};
 
 use async_std::{sync::Mutex, task};
 use gdk4_wayland::{WaylandDisplay, WaylandMonitor};
-use gio::prelude::Cast;
+use gio::{glib::property::PropertyGet, prelude::Cast};
 use gtk4::{
     gdk::{Display, Monitor},
     prelude::DisplayExtManual,
@@ -16,8 +20,14 @@ use wayland_protocols::xdg::xdg_output::zv1::client::{zxdg_output_manager_v1, zx
 
 pub struct GtkOutputs {
     output_manager: zxdg_output_manager_v1::ZxdgOutputManagerV1,
-    queue: EventQueue<GtkOutputs>,
+    queue: Mutex<EventQueue<GtkOutputsQueue>>,
 }
+
+unsafe impl Send for GtkOutputs {}
+
+unsafe impl Sync for GtkOutputs {}
+
+struct GtkOutputsQueue;
 
 impl GtkOutputs {
     pub async fn instance() -> Arc<Self> {
@@ -41,7 +51,7 @@ impl GtkOutputs {
         let wl_display = wayland_display.wl_display().unwrap();
         let connection = Connection::from_backend(wl_display.backend().upgrade().unwrap());
 
-        let (globals, queue) = registry_queue_init::<GtkOutputs>(&connection).unwrap();
+        let (globals, queue) = registry_queue_init::<GtkOutputsQueue>(&connection).unwrap();
 
         // now you can bind the globals you need for your app
         let output_manager: zxdg_output_manager_v1::ZxdgOutputManagerV1 =
@@ -49,7 +59,7 @@ impl GtkOutputs {
 
         Self {
             output_manager,
-            queue,
+            queue: Mutex::new(queue),
         }
     }
 
@@ -57,17 +67,20 @@ impl GtkOutputs {
         let (name_sender, mut name_receiver) = async_broadcast::broadcast(1);
 
         let wayland_monitor: &WaylandMonitor = monitor.dynamic_cast_ref().unwrap();
+        let mut queue = self.queue.lock().await;
         self.output_manager.get_xdg_output(
             &wayland_monitor.wl_output().unwrap(),
-            &self.queue.handle(),
+            &queue.handle(),
             name_sender,
         );
+
+        queue.roundtrip(&mut GtkOutputsQueue {}).unwrap();
 
         name_receiver.recv_direct().await.unwrap()
     }
 }
 
-impl Dispatch<WlRegistry, GlobalListContents> for GtkOutputs {
+impl Dispatch<WlRegistry, GlobalListContents> for GtkOutputsQueue {
     fn event(
         _state: &mut Self,
         _proxy: &WlRegistry,
@@ -79,7 +92,7 @@ impl Dispatch<WlRegistry, GlobalListContents> for GtkOutputs {
     }
 }
 
-impl Dispatch<zxdg_output_manager_v1::ZxdgOutputManagerV1, ()> for GtkOutputs {
+impl Dispatch<zxdg_output_manager_v1::ZxdgOutputManagerV1, ()> for GtkOutputsQueue {
     fn event(
         _state: &mut Self,
         _proxy: &zxdg_output_manager_v1::ZxdgOutputManagerV1,
@@ -91,7 +104,7 @@ impl Dispatch<zxdg_output_manager_v1::ZxdgOutputManagerV1, ()> for GtkOutputs {
     }
 }
 
-impl Dispatch<zxdg_output_v1::ZxdgOutputV1, async_broadcast::Sender<String>> for GtkOutputs {
+impl Dispatch<zxdg_output_v1::ZxdgOutputV1, async_broadcast::Sender<String>> for GtkOutputsQueue {
     fn event(
         _state: &mut Self,
         proxy: &zxdg_output_v1::ZxdgOutputV1,

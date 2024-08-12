@@ -371,6 +371,7 @@ fn activate(app: &Application) {
                         #[strong]
                         gtk_outputs,
                         async move {
+                            println!("Monitors changed");
                             let mut windows = windows.borrow_mut();
                             let monitor_names = (0..monitors.n_items())
                                 .map(|index| {
@@ -380,13 +381,16 @@ fn activate(app: &Application) {
                                     if let Some(gdk_connector) =
                                         gdk_monitor.connector().map(|c| c.as_str().to_owned())
                                     {
+                                        println!("Connector: {}", gdk_connector);
                                         (gdk_monitor.clone(), gdk_connector)
                                     } else {
                                         let gtk_outputs = gtk_outputs.clone();
                                         (
                                             gdk_monitor.clone(),
                                             task::block_on(async move {
-                                                gtk_outputs.get_name(gdk_monitor).await
+                                                let name = gtk_outputs.get_name(gdk_monitor).await;
+                                                println!("Name: {}", name);
+                                                name
                                             }),
                                         )
                                     }
@@ -402,6 +406,7 @@ fn activate(app: &Application) {
                                 }
 
                                 if let Some(window) = window.upgrade() {
+                                    println!("Closing window: {}", connector);
                                     window.close();
                                 }
                                 windows.remove(connector.as_str());
