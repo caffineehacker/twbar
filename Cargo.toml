@@ -4,9 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-gtk4 = { version = "0.9.0", features = ["v4_14"] }
-gdk4-wayland = { version = "0.9.0", features = ["v4_12", "wayland_crate"] }
-gtk4-layer-shell = "0.4.0"
+# Even though we don't depend on wayland-sys directly, we need to use dlopen so we don't
+# load wayland-client before gtk4-layer-shell.
+wayland-sys = { version = "*", features = ["dlopen"] }
+gtk4-layer-shell = "0.4"
+gtk4 = { version = "0.9", features = ["v4_14"] }
+gdk4-wayland = { version = "0.9", features = ["wayland_crate", "v4_12"] }
 gio = "*"
 async-channel = "*"
 serde_json = "*"
