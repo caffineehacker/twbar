@@ -3,6 +3,7 @@ use async_std::{
     sync::{Arc, Mutex, Weak},
     task,
 };
+use gtk4::glib;
 use serde::Deserialize;
 
 use super::{
@@ -27,13 +28,14 @@ pub struct HyprlandPartialWorkspace {
     pub name: String,
 }
 
-#[derive(Deserialize, Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Clone, Default, Debug, PartialEq, Eq, glib::Boxed)]
+#[boxed_type(name = "HyprlandWindow")]
 pub struct HyprlandWindow {
     pub address: String,
     pub mapped: bool,
     pub hidden: bool,
-    pub at: [i32; 2],
-    pub size: [i32; 2],
+    pub at: (i32, i32),
+    pub size: (i32, i32),
     pub workspace: HyprlandPartialWorkspace,
     pub floating: bool,
     pub pseudo: bool,

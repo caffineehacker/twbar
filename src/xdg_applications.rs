@@ -1,6 +1,5 @@
-
+use async_std::sync::{Arc, Mutex, Weak};
 use gio::DesktopAppInfo;
-
 
 struct XdgApplication {
     name: String,
@@ -14,39 +13,21 @@ pub struct XdgApplicationsCache {
 }
 
 impl XdgApplicationsCache {
-    // pub fn get_instance() -> Arc<Self> {
-    //     static INSTANCE: Mutex<Weak<XdgApplicationsCache>> = Mutex::new(Weak::new());
+    pub async fn get_instance() -> Arc<Self> {
+        static INSTANCE: Mutex<Weak<XdgApplicationsCache>> = Mutex::new(Weak::new());
 
-    //     let mut mutex_guard = INSTANCE.lock().await;
-    //     match mutex_guard.upgrade() {
-    //         Some(instance) => instance,
-    //         None => {
-    //             let instance = Self::new();
-    //             *mutex_guard = Arc::downgrade(&instance);
-    //             instance
-    //         }
-    //     }
-    // }
+        let mut mutex_guard = INSTANCE.lock().await;
+        match mutex_guard.upgrade() {
+            Some(instance) => instance,
+            None => {
+                let instance = Arc::new(Self::new());
+                *mutex_guard = Arc::downgrade(&instance);
+                instance
+            }
+        }
+    }
 
-    // async fn new() -> Arc<Self> {
-    //     let xdg_data_dirs = var("XDG_DATA_DIRS").unwrap();
-    //     let mut applications = Vec::new();
-    //     for data_dir in xdg_data_dirs.split(":") {
-    //         let path = Path::new(data_dir).join("applications");
-    //         if path.exists().await {
-    //             let entries = fs::read_dir(path).await.unwrap();
-    //             while let Some(file) = entries.next().await {
-    //                 let contents = fs::read_to_string(file.unwrap().path()).await.unwrap();
-
-    //             }
-    //         }
-    //     }
-    //     Arc::new(Self {
-
-    //     })
-    // }
-
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             applications: Vec::new(),
         }
@@ -58,7 +39,9 @@ impl XdgApplicationsCache {
         for outer in matches {
             for desktop_id in outer {
                 println!("Found match {} -> {}", class_name, desktop_id);
-                if let Some(info) = gio::DesktopAppInfo::new(desktop_id.as_str()) { return Some(info); }
+                if let Some(info) = gio::DesktopAppInfo::new(desktop_id.as_str()) {
+                    return Some(info);
+                }
             }
         }
 

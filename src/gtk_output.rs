@@ -3,10 +3,7 @@ use std::sync::{Arc, Weak};
 use async_std::{sync::Mutex, task};
 use gdk4_wayland::{WaylandDisplay, WaylandMonitor};
 use gio::prelude::Cast;
-use gtk4::{
-    gdk::{Display, Monitor},
-    prelude::DisplayExtManual,
-};
+use gtk4::gdk::{Display, Monitor};
 use wayland_client::{
     globals::{registry_queue_init, GlobalListContents},
     protocol::wl_registry::WlRegistry,

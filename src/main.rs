@@ -13,6 +13,7 @@ use gtk4::{Application, ApplicationWindow};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use gtk_output::GtkOutputs;
 use std::process::Command;
+use widgets::taskbar_button::TaskbarButton;
 use widgets::workspace_button::WorkspaceButton;
 
 mod gtk_output;
@@ -36,7 +37,6 @@ fn launch_wofi_button() -> Button {
     container.set_halign(gtk4::Align::Center);
     button.set_child(Some(&container));
     button.set_has_frame(false);
-    // button.add_css_class("workspace");
     button.add_css_class("circular");
     button.set_focusable(false);
 
@@ -58,12 +58,6 @@ fn launch_wofi_button() -> Button {
 
     button
 }
-
-// "custom/launch_wofi" = {
-//                 format = "";
-//                 on-click = "pkill wofi || wofi -c ~/.config/wofi/config-bmenu";
-//                 tooltip = false;
-//               };
 
 //               "custom/power_btn" = {
 //                 format = "";
@@ -128,75 +122,18 @@ fn workspaces_bar(monitor_id: i32) -> gtk::Widget {
     container.into()
 }
 
-fn taskbar_button(window: &HyprlandWindow, cache: &XdgApplicationsCache) -> Button {
-    let button = Button::new();
-    button.set_focusable(false);
-
-    assert!(!window.address.is_empty());
-    let address = window.address.clone();
-    button.connect_clicked(move |_button| {
-        let address = address.clone();
-        glib::spawn_future_local(async move {
-            HyprlandCommands::set_active_window(&address).await;
-        });
-    });
-    update_taskbar_button(&button, window, None, cache);
-
-    button
-}
-
-fn update_taskbar_button(
-    button: &Button,
-    current_window: &HyprlandWindow,
-    previous_window: Option<&HyprlandWindow>,
-    cache: &XdgApplicationsCache,
-) {
-    if !current_window.title.is_empty() {
-        // Any tooltip currently seg faults on hover for some reason...
-        // button.set_tooltip_text(Some(&current_window.title));
-    }
-
-    if previous_window.is_some_and(|pw| {
-        pw.class != current_window.class || pw.initial_class != current_window.initial_class
-    }) || previous_window.is_none()
-    {
-        let mut app_info = cache.get_application_by_class(&current_window.initial_class);
-        if app_info.is_none() {
-            app_info = cache.get_application_by_class(&current_window.class);
-        }
-
-        if app_info.is_some() {
-            let app_info = app_info.unwrap();
-            let icon = app_info.string("Icon");
-            if icon.is_some() {
-                let button_box = gtk::Box::new(Orientation::Horizontal, 8);
-                let image = gtk::Image::new();
-                image.set_icon_name(icon.unwrap().as_str().into());
-                button_box.append(&image);
-                let label = Label::new(app_info.name().as_str().into());
-                button_box.append(&label);
-                button.set_child(Some(&button_box));
-            } else {
-                button.set_label(app_info.name().as_str());
-            }
-        } else {
-            button.set_label(&current_window.initial_class);
-        }
-    }
-}
-
 fn taskbar_widget(monitor: i32) -> Widget {
-    let container = gtk::Box::new(Orientation::Horizontal, 8);
+    let container = gtk::Box::new(Orientation::Horizontal, 0);
 
     glib::spawn_future_local(clone!(
         #[weak]
         container,
         async move {
-            let application_cache = XdgApplicationsCache::new();
+            let application_cache = XdgApplicationsCache::get_instance().await;
             let hyprland_windows = HyprlandWindows::instance().await;
             let mut windows = hyprland_windows.get_windows_update_emitter();
 
-            let mut buttons: Vec<(HyprlandWindow, Button)> = Vec::new();
+            let mut buttons: Vec<TaskbarButton> = Vec::new();
 
             loop {
                 let mut new_windows = windows.next().await;
@@ -212,48 +149,36 @@ fn taskbar_widget(monitor: i32) -> Widget {
                     let previous_value = buttons
                         .iter_mut()
                         .enumerate()
-                        .find(|(_, (w, _b))| w.address == new_window.address);
+                        .find(|(_, b)| b.hyprland_window().address == new_window.address);
                     if previous_value.is_some() {
-                        let (current_index, (previous_window, current_button)) =
-                            previous_value.unwrap();
-                        if new_window != *previous_window {
-                            update_taskbar_button(
-                                current_button,
-                                &new_window,
-                                Some(previous_window),
-                                &application_cache,
-                            );
-                            *previous_window = new_window;
-                        }
+                        let (current_index, current_button) = previous_value.unwrap();
+                        current_button.set_hyprland_window(new_window);
                         if current_index != index {
                             let current_button = current_button.clone();
                             buttons.swap(index, current_index);
                             let mut sibling = None;
                             if index > 0 {
-                                sibling = buttons.get(index - 1).map(|(_, b)| b);
+                                sibling = buttons.get(index - 1);
                             }
                             container.reorder_child_after(&current_button, sibling)
                         }
                     } else {
                         println!("Adding current window {}: {:?}", index, new_window);
-                        let button = taskbar_button(&new_window, &application_cache);
+                        let button = TaskbarButton::new(&new_window);
                         if index > 0 {
                             let current_button = buttons.get(index - 1).unwrap();
-                            println!("New sibling: {:?}", current_button.1);
+                            println!("New sibling: {:?}", current_button);
                             container.append(&button);
-                            container.reorder_child_after(
-                                &button,
-                                buttons.get(index - 1).map(|(_, b)| b),
-                            )
+                            container.reorder_child_after(&button, buttons.get(index - 1))
                         } else {
                             container.prepend(&button);
                         }
-                        buttons.insert(index, (new_window, button));
+                        buttons.insert(index, button);
                     }
                 }
 
                 for i in number_of_windows..buttons.len() {
-                    container.remove(&buttons.get(i).unwrap().1);
+                    container.remove(buttons.get(i).unwrap());
                 }
                 buttons.truncate(number_of_windows);
             }
@@ -517,6 +442,16 @@ async fn main() -> Result<glib::ExitCode, ()> {
 #workspaces {
     padding-right: 0px;
     padding-left: 5px;
+}
+
+.taskbar_button {
+    border-radius: 0px;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+.taskbar_button.active {
+	background-color: rgba(198,208,245,0.12);
 }
         ",
         );
