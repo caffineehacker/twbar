@@ -4,7 +4,8 @@ use async_std::{
     task,
 };
 use gtk4::glib;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
+use serde_json::Value;
 
 use super::{
     commands::HyprlandCommands,
@@ -49,16 +50,29 @@ pub struct HyprlandWindow {
     pub pid: u64,
     pub xwayland: bool,
     pub pinned: bool,
+    #[serde(deserialize_with = "deserialize_bool")]
     pub fullscreen: bool,
-    #[serde(rename = "fullscreenMode")]
-    pub fullscreen_mode: i32,
-    #[serde(rename = "fakeFullscreen")]
-    pub fake_fullscreen: bool,
+    #[serde(rename = "fullscreenClient", deserialize_with = "deserialize_bool")]
+    pub fullscreen_client: bool,
     pub grouped: Vec<String>,
     pub tags: Vec<String>,
     pub swallowing: String,
     #[serde(rename = "focusHistoryID")]
     pub focus_history_id: i32,
+}
+
+fn deserialize_bool<'de, D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error> {
+    Ok(match serde::de::Deserialize::deserialize(deserializer)? {
+        Value::Bool(b) => b,
+        Value::String(s) => s == "yes" || s == "1",
+        Value::Number(num) => {
+            num.as_i64()
+                .ok_or(serde::de::Error::custom("Invalid number"))?
+                != 0
+        }
+        Value::Null => false,
+        _ => return Err(serde::de::Error::custom("Wrong type, expected boolean")),
+    })
 }
 
 impl HyprlandWindow {

@@ -96,7 +96,9 @@ fn workspaces_bar(monitor_id: i32) -> gtk::Widget {
                 }
 
                 for workspace in workspaces.iter() {
-                    container.append(&WorkspaceButton::new(workspace));
+                    if workspace.windows != 0 {
+                        container.append(&WorkspaceButton::new(workspace));
+                    }
                 }
             }
         }
