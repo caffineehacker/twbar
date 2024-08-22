@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use async_std::task;
 use glib::clone;
+use gtk4::ffi::GtkWidget;
 use gtk4::gdk::{Display, Monitor};
 use gtk4::prelude::DisplayExt;
 use gtk4::{self as gtk, Button, CssProvider, DebugFlags, Label, Orientation, Widget};
@@ -28,19 +29,18 @@ use hyprland::windows::{HyprlandWindow, HyprlandWindows};
 use hyprland::workspaces::{HyprlandWorkspace, HyprlandWorkspaces};
 use xdg_applications::XdgApplicationsCache;
 
-fn launch_wofi_button() -> Button {
-    let button = gtk::Button::new();
+fn launch_wofi_button() -> gtk::Widget {
+    let event_controller = gtk::GestureClick::new();
     let container = gtk::Box::new(Orientation::Horizontal, 0);
+
     let label = gtk::Label::new(Some(""));
+    // The glyph is really 2 chars wide
+    label.set_width_chars(2);
     label.set_halign(gtk4::Align::Center);
     container.append(&label);
     container.set_halign(gtk4::Align::Center);
-    button.set_child(Some(&container));
-    button.set_has_frame(false);
-    button.add_css_class("circular");
-    button.set_focusable(false);
 
-    button.connect_clicked(|_button| {
+    event_controller.connect_released(|_box, _, _, _| {
         Command::new("pkill")
             .args(["wofi"])
             .stderr(Stdio::null())
@@ -56,7 +56,9 @@ fn launch_wofi_button() -> Button {
             .ok();
     });
 
-    button
+    container.add_controller(event_controller);
+
+    container.into()
 }
 
 //               "custom/power_btn" = {
@@ -70,59 +72,6 @@ fn launch_wofi_button() -> Button {
 //                 on-click = "sh -c '(sleep 0.5s; swaylock)' & disown";
 //                 tooltip = false;
 //               };
-
-fn workspaces_bar(monitor_id: i32) -> gtk::Widget {
-    let container = gtk::Box::new(Orientation::Horizontal, 0);
-    container.set_widget_name("workspaces");
-
-    glib::spawn_future_local(clone!(
-        #[weak]
-        container,
-        async move {
-            let hyprland_workspaces = HyprlandWorkspaces::instance().await;
-            let mut workspaces_state = hyprland_workspaces.get_workspaces_state_emitter();
-
-            loop {
-                let workspaces = workspaces_state.next().await;
-                let mut workspaces: Vec<HyprlandWorkspace> = workspaces
-                    .into_iter()
-                    .filter(|w| w.monitor_id == monitor_id)
-                    .collect();
-                workspaces.sort_by_key(|w| w.id);
-
-                println!("Redoing workspace buttons");
-                while let Some(button) = container.first_child() {
-                    container.remove(&button);
-                }
-
-                for workspace in workspaces.iter() {
-                    if workspace.windows != 0 {
-                        container.append(&WorkspaceButton::new(workspace));
-                    }
-                }
-            }
-        }
-    ));
-
-    glib::spawn_future_local(clone!(
-        #[weak]
-        container,
-        async move {
-            let hyprland_workspaces = HyprlandWorkspaces::instance().await;
-            let mut active_workspace_id = hyprland_workspaces.get_active_workspace_id_state();
-
-            loop {
-                let active_workspace_id = active_workspace_id.next().await;
-                let mut next_child = container.first_child();
-                while let Some(child) = next_child {
-                    next_child = child.next_sibling();
-                }
-            }
-        }
-    ));
-
-    container.into()
-}
 
 fn taskbar_widget(monitor: i32) -> Widget {
     let container = gtk::Box::new(Orientation::Horizontal, 0);
@@ -221,7 +170,7 @@ fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> Applicat
 
             let hbox = gtk::Box::new(Orientation::Horizontal, 8);
             hbox.append(&launch_wofi_button());
-            hbox.append(&workspaces_bar(hyprland_monitor.id));
+            hbox.append(&widgets::workspaces::Workspaces::new(hyprland_monitor.id));
             hbox.append(&taskbar_widget(hyprland_monitor.id));
 
             let vbox = gtk::Box::new(Orientation::Vertical, 1);

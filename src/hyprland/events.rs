@@ -343,7 +343,7 @@ pub struct Pin {
 
 #[derive(Clone, Debug)]
 pub struct WorkspaceV2 {
-    pub id: String,
+    pub id: i32,
     pub name: String,
 }
 
@@ -352,7 +352,7 @@ impl EventData for WorkspaceV2 {
         let (id, name) = data.split_once(',')?;
 
         Some(Self {
-            id: id.to_owned(),
+            id: id.to_owned().parse().unwrap_or(0),
             name: name.to_owned(),
         })
     }

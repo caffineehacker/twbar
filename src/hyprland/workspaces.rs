@@ -28,7 +28,7 @@ pub struct HyprlandWorkspace {
 
 pub struct HyprlandWorkspaces {
     workspaces: Arc<LatestEventValue<Vec<HyprlandWorkspace>>>,
-    active_workspace_id: Arc<LatestEventValue<String>>,
+    active_workspace_id: Arc<LatestEventValue<i32>>,
 }
 
 impl HyprlandWorkspaces {
@@ -124,7 +124,7 @@ impl HyprlandWorkspaces {
         LatestEventValueListener::new(self.workspaces.clone())
     }
 
-    pub fn get_active_workspace_id_state(&self) -> LatestEventValueListener<String> {
+    pub fn get_active_workspace_id_state(&self) -> LatestEventValueListener<i32> {
         LatestEventValueListener::new(self.active_workspace_id.clone())
     }
 }
