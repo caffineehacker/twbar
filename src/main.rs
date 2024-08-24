@@ -5,29 +5,22 @@ use std::sync::Arc;
 
 use async_std::task;
 use glib::clone;
-use gtk4::ffi::GtkWidget;
 use gtk4::gdk::{Display, Monitor};
 use gtk4::prelude::DisplayExt;
-use gtk4::{self as gtk, Button, CssProvider, DebugFlags, Label, Orientation, Widget};
+use gtk4::{self as gtk, CssProvider, DebugFlags, Label, Orientation};
 use gtk4::{glib, prelude::*};
 use gtk4::{Application, ApplicationWindow};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use gtk_output::GtkOutputs;
 use std::process::Command;
-use widgets::taskbar_button::TaskbarButton;
-use widgets::workspace_button::WorkspaceButton;
 
 mod gtk_output;
 mod hyprland;
 mod widgets;
 mod xdg_applications;
 
-use hyprland::commands::HyprlandCommands;
 use hyprland::events::HyprlandEvents;
 use hyprland::monitors::HyprlandMonitors;
-use hyprland::windows::{HyprlandWindow, HyprlandWindows};
-use hyprland::workspaces::{HyprlandWorkspace, HyprlandWorkspaces};
-use xdg_applications::XdgApplicationsCache;
 
 fn launch_wofi_button() -> gtk::Widget {
     let event_controller = gtk::GestureClick::new();
@@ -73,72 +66,6 @@ fn launch_wofi_button() -> gtk::Widget {
 //                 tooltip = false;
 //               };
 
-fn taskbar_widget(monitor: i32) -> Widget {
-    let container = gtk::Box::new(Orientation::Horizontal, 0);
-
-    glib::spawn_future_local(clone!(
-        #[weak]
-        container,
-        async move {
-            let application_cache = XdgApplicationsCache::get_instance().await;
-            let hyprland_windows = HyprlandWindows::instance().await;
-            let mut windows = hyprland_windows.get_windows_update_emitter();
-
-            let mut buttons: Vec<TaskbarButton> = Vec::new();
-
-            loop {
-                let mut new_windows = windows.next().await;
-
-                new_windows.sort_by(|a, b| a.workspace.id.cmp(&b.workspace.id));
-                let new_windows: Vec<HyprlandWindow> = new_windows
-                    .into_iter()
-                    .filter(|w| w.monitor == monitor)
-                    .collect();
-                let number_of_windows = new_windows.len();
-
-                for (index, new_window) in new_windows.into_iter().enumerate() {
-                    let previous_value = buttons
-                        .iter_mut()
-                        .enumerate()
-                        .find(|(_, b)| b.hyprland_window().address == new_window.address);
-                    if previous_value.is_some() {
-                        let (current_index, current_button) = previous_value.unwrap();
-                        current_button.set_hyprland_window(new_window);
-                        if current_index != index {
-                            let current_button = current_button.clone();
-                            buttons.swap(index, current_index);
-                            let mut sibling = None;
-                            if index > 0 {
-                                sibling = buttons.get(index - 1);
-                            }
-                            container.reorder_child_after(&current_button, sibling)
-                        }
-                    } else {
-                        println!("Adding current window {}: {:?}", index, new_window);
-                        let button = TaskbarButton::new(&new_window);
-                        if index > 0 {
-                            let current_button = buttons.get(index - 1).unwrap();
-                            println!("New sibling: {:?}", current_button);
-                            container.append(&button);
-                            container.reorder_child_after(&button, buttons.get(index - 1))
-                        } else {
-                            container.prepend(&button);
-                        }
-                        buttons.insert(index, button);
-                    }
-                }
-
-                for i in number_of_windows..buttons.len() {
-                    container.remove(buttons.get(i).unwrap());
-                }
-                buttons.truncate(number_of_windows);
-            }
-        }
-    ));
-
-    container.into()
-}
-
 fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> ApplicationWindow {
     let window = ApplicationWindow::new(app);
 
@@ -171,7 +98,7 @@ fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> Applicat
             let hbox = gtk::Box::new(Orientation::Horizontal, 8);
             hbox.append(&launch_wofi_button());
             hbox.append(&widgets::workspaces::Workspaces::new(hyprland_monitor.id));
-            hbox.append(&taskbar_widget(hyprland_monitor.id));
+            hbox.append(&widgets::taskbar::Taskbar::new(hyprland_monitor.id));
 
             let vbox = gtk::Box::new(Orientation::Vertical, 1);
             vbox.append(&hbox);
@@ -298,58 +225,6 @@ fn activate(app: &Application) {
             ));
         }
     ));
-
-    // glib::spawn_future_local(clone!(@weak app => async move {
-    //     let monitor_events = HyprlandMonitors::instance().await;
-    //     let mut monitor_stream = monitor_events.get_monitor_state_emitter();
-
-    //     loop {
-    //         let _ = monitor_stream.next().await;
-
-    //         println!("Monitors changed!");
-
-    //         let display = Display::default().unwrap();
-    //         let gdk_monitors = display.monitors();
-
-    //         // First remove any windows that are not in the new list
-    //         'windows_loop: for (connector, window) in windows.clone().iter() {
-    //             for i in 0..gdk_monitors.n_items() {
-    //                 let gdk_monitor = gdk_monitors.item(i).unwrap();
-    //                 let gdk_monitor: &Monitor = gdk_monitor.dynamic_cast_ref().unwrap();
-    //                 let gdk_connector = gdk_monitor
-    //                     .connector()
-    //                     .map(|c| c.as_str().to_owned()).unwrap();
-
-    //                 if gdk_connector == *connector {
-    //                     println!("Monitor {} is still connected", connector);
-    //                     continue 'windows_loop
-    //                 }
-    //             }
-
-    //             if let Some(window) = window.upgrade() {
-    //                 window.close();
-    //             }
-    //             windows.remove(connector.as_str());
-    //         }
-
-    //         // Now add new monitors
-    //         for i in 0..gdk_monitors.n_items() {
-    //             let gdk_monitor = gdk_monitors.item(i).unwrap();
-    //             let gdk_monitor: &Monitor = gdk_monitor.dynamic_cast_ref().unwrap();
-    //             let gdk_connector = gdk_monitor
-    //                 .connector()
-    //                 .map(|c| c.as_str().to_owned()).unwrap();
-
-    //             if !windows.contains_key(&gdk_connector) {
-    //                 println!("New monitor found: {}", gdk_connector);
-    //                 windows.insert(
-    //                     gdk_connector.clone(),
-    //                     bar_window(&app, gdk_monitor, &gdk_connector).downgrade(),
-    //                 );
-    //             }
-    //         }
-    //     }
-    // }));
 
     gtk::set_debug_flags(DebugFlags::INTERACTIVE);
 }

@@ -1,4 +1,3 @@
-use async_broadcast::{broadcast, InactiveReceiver, Receiver};
 use async_std::{
     sync::{Arc, Mutex, Weak},
     task,
@@ -14,14 +13,6 @@ use super::{
     },
     wayland_manager::{ExtForeignToplevel, WaylandManager},
 };
-
-#[derive(Clone, Debug)]
-pub enum WindowEvent {
-    NewWindow(HyprlandWindow),
-    ModifiedWindow(HyprlandWindow),
-    // Argument is the window address
-    ClosedWindow(String),
-}
 
 #[derive(Deserialize, Clone, Default, Debug, PartialEq, Eq)]
 pub struct HyprlandPartialWorkspace {
@@ -150,7 +141,6 @@ impl EventData for Vec<HyprlandWindow> {
 
 pub struct HyprlandWindows {
     windows: Arc<LatestEventValue<Vec<HyprlandWindow>>>,
-    event_receiver: Arc<InactiveReceiver<WindowEvent>>,
     wayland_manager: Arc<WaylandManager>,
 }
 
@@ -171,139 +161,28 @@ impl HyprlandWindows {
 
     async fn new() -> Arc<Self> {
         let windows = Arc::new(LatestEventValue::new());
-        let (mut sender, receiver) = broadcast(1024);
-        sender.set_await_active(false);
-        sender.set_overflow(true);
 
         let instance = Arc::new(Self {
             windows,
-            event_receiver: Arc::new(receiver.deactivate()),
             wayland_manager: WaylandManager::instance().await,
         });
 
         {
             let instance = instance.clone();
-            let sender = sender.clone();
             task::spawn(async move {
                 let mut events = HyprlandEvents::instance().await.get_event_stream().await;
 
                 instance.force_refresh().await;
 
-                // // Send open window command for every window
-                // {
-                //     let windows = instance.windows.current_value.lock().await;
-                //     for window in &windows.1 {
-                //         sender.broadcast(WindowEvent::NewWindow(window.clone())).await.ok();
-                //     }
-                // }
-
                 loop {
                     let event = events.recv().await.unwrap();
-                    println!("Hyprland Event: {:?}", event);
                     match &event {
-                        HyprlandEvent::CloseWindow(address) => {
-                            instance
-                                .windows
-                                .update_fn(|current_windows| {
-                                    let updated_windows: Vec<HyprlandWindow> = current_windows
-                                        .clone()
-                                        .into_iter()
-                                        .filter(|w| w.address != *address)
-                                        .collect();
-
-                                    Some(updated_windows)
-                                })
-                                .await;
-                            sender
-                                .broadcast(WindowEvent::ClosedWindow(address.clone()))
-                                .await
-                                .ok();
-                            instance.force_refresh().await;
-                        }
-                        HyprlandEvent::MoveWindowV2(move_window) => {
-                            let mut updated_hyprland_window = None;
-                            instance
-                                .windows
-                                .update_fn(|current_windows| {
-                                    let updated_windows: Vec<HyprlandWindow> = current_windows
-                                        .clone()
-                                        .into_iter()
-                                        .map(|mut w| {
-                                            if w.address == move_window.window_address {
-                                                w.update_from_event(&event);
-                                                updated_hyprland_window = Some(w.clone());
-                                            }
-                                            w
-                                        })
-                                        .collect();
-
-                                    Some(updated_windows)
-                                })
-                                .await;
-
-                            if updated_hyprland_window.is_some() {
-                                sender
-                                    .broadcast(WindowEvent::ModifiedWindow(
-                                        updated_hyprland_window.unwrap(),
-                                    ))
-                                    .await
-                                    .ok();
-                            }
-                            instance.force_refresh().await;
-                        }
-                        HyprlandEvent::OpenWindow(open_window) => {
-                            let mut updated_hyprland_window = None;
-                            let mut new_hyprland_window: Option<HyprlandWindow> = None;
-                            instance
-                                .windows
-                                .update_fn(|current_windows| {
-                                    let mut updated_windows: Vec<HyprlandWindow> = current_windows
-                                        .clone()
-                                        .into_iter()
-                                        .map(|mut w| {
-                                            if w.address == open_window.address {
-                                                w.update_from_event(&event);
-                                                updated_hyprland_window = Some(w.clone());
-                                            }
-                                            w
-                                        })
-                                        .collect();
-
-                                    if updated_hyprland_window.is_none() {
-                                        println!("New window from Hyprland: {:?}", open_window);
-                                        let new_window: HyprlandWindow = (&event).into();
-                                        new_hyprland_window = Some(new_window.clone());
-                                        updated_windows.push(new_window);
-                                    }
-
-                                    Some(updated_windows)
-                                })
-                                .await;
-
-                            println!(
-                                "About to send hyprland openwindow event: {:?}, {:?}",
-                                updated_hyprland_window, new_hyprland_window
-                            );
-
-                            if updated_hyprland_window.is_some() {
-                                sender
-                                    .broadcast(WindowEvent::ModifiedWindow(
-                                        updated_hyprland_window.unwrap(),
-                                    ))
-                                    .await
-                                    .ok();
-                            } else if new_hyprland_window.is_some() {
-                                sender
-                                    .broadcast(WindowEvent::NewWindow(new_hyprland_window.unwrap()))
-                                    .await
-                                    .ok();
-                            }
-                            instance.force_refresh().await;
-                        }
-                        HyprlandEvent::MonitorAddedV2(_) => {
-                            instance.force_refresh().await;
-                        }
-                        HyprlandEvent::MonitorRemoved(_) => {
+                        HyprlandEvent::CloseWindow(_)
+                        | HyprlandEvent::MoveWindowV2(_)
+                        | HyprlandEvent::OpenWindow(_)
+                        | HyprlandEvent::MonitorAddedV2(_)
+                        | HyprlandEvent::MonitorRemoved(_)
+                        | HyprlandEvent::ChangeFloatingMode(_) => {
                             instance.force_refresh().await;
                         }
                         _ => {}
@@ -314,7 +193,6 @@ impl HyprlandWindows {
 
         {
             let instance = instance.clone();
-            let sender = sender.clone();
             task::spawn(async move {
                 let wayland_manager = WaylandManager::instance().await;
                 let (_current_windows, mut wayland_window_listener) =
@@ -355,15 +233,6 @@ impl HyprlandWindows {
                                     Some(updated_windows)
                                 })
                                 .await;
-
-                            if updated_hyprland_window.is_some() {
-                                sender
-                                    .broadcast(WindowEvent::ModifiedWindow(
-                                        updated_hyprland_window.unwrap(),
-                                    ))
-                                    .await
-                                    .ok();
-                            }
                         }
                         super::wayland_manager::WaylandWindowEvent::NewWindowExt(new_window) => {
                             instance
@@ -385,11 +254,6 @@ impl HyprlandWindows {
                                     }
                                 })
                                 .await;
-
-                            sender
-                                .broadcast(WindowEvent::NewWindow(new_window.into()))
-                                .await
-                                .ok();
                         }
                         super::wayland_manager::WaylandWindowEvent::RemovedWindowExt(
                             deleted_window,
@@ -418,18 +282,6 @@ impl HyprlandWindows {
                                     Some(updated_windows)
                                 })
                                 .await;
-
-                            let addr = format!(
-                                "0x{}",
-                                deleted_window
-                                    .identifier
-                                    .split_once("->")
-                                    .unwrap()
-                                    .1
-                                    .trim_start_matches('0')
-                            );
-                            println!("Broadcasting removal for {}", addr);
-                            sender.broadcast(WindowEvent::ClosedWindow(addr)).await.ok();
                         }
                         _ => {}
                     }
@@ -451,14 +303,5 @@ impl HyprlandWindows {
 
     pub fn get_windows_update_emitter(&self) -> LatestEventValueListener<Vec<HyprlandWindow>> {
         LatestEventValueListener::new(self.windows.clone())
-    }
-
-    pub async fn get_window_event_emitter(&self) -> (Vec<HyprlandWindow>, Receiver<WindowEvent>) {
-        self.force_refresh().await;
-        let current_windows_guard = self.windows.current_value.lock().await;
-        (
-            current_windows_guard.1.clone(),
-            self.event_receiver.activate_cloned(),
-        )
     }
 }

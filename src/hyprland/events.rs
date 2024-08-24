@@ -77,7 +77,7 @@ impl EventData for HyprlandEvent {
         Self: Sized,
     {
         if let Some((command, data)) = message.split_once(">>") {
-            match command {
+            let parsed_command = match command {
                 "workspace" => Some(Self::Workspace(data.to_owned())),
                 "workspacev2" => WorkspaceV2::parse(data).map(Self::WorkspaceV2),
                 "focusedmon" => FocusedMon::parse(data).map(Self::FocusedMon),
@@ -100,11 +100,15 @@ impl EventData for HyprlandEvent {
                 "closewindow" => Some(Self::CloseWindow(format!("0x{}", data.to_owned()))),
                 "movewindow" => MoveWindow::parse(data).map(Self::MoveWindow),
                 "movewindowv2" => MoveWindowV2::parse(data).map(Self::MoveWindowV2),
-                _ => {
-                    println!("Unhandled event: {}>>{}", command, data);
-                    None
+                "changefloatingmode" => {
+                    ChangeFloatingMode::parse(data).map(Self::ChangeFloatingMode)
                 }
+                _ => None,
+            };
+            if parsed_command.is_none() {
+                println!("Failed to parse command: {}>>{}", command, data);
             }
+            parsed_command
         } else {
             None
         }
@@ -308,6 +312,19 @@ impl EventData for MoveWindowV2 {
 pub struct ChangeFloatingMode {
     window_address: String,
     is_floating: bool,
+}
+
+impl EventData for ChangeFloatingMode {
+    fn parse(data: &str) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        let (window_address, is_floating) = data.split_once(",")?;
+        Some(Self {
+            window_address: window_address.to_owned(),
+            is_floating: is_floating == "1",
+        })
+    }
 }
 
 #[derive(Clone, Debug)]

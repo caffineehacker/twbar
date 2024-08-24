@@ -26,7 +26,10 @@ impl WorkspacesImpl {
         let workspaces = self.workspaces.borrow();
         let mut workspaces: Vec<&HyprlandWorkspace> = workspaces
             .iter()
-            .filter(|w| w.windows > 0 || w.id == *self.selected_workspace_id.borrow())
+            .filter(|w| {
+                (w.windows > 0 || w.id == *self.selected_workspace_id.borrow())
+                    && w.monitor_id == *self.monitor_id.get().unwrap()
+            })
             .collect();
         workspaces.sort_by_key(|w| w.id);
 
@@ -85,7 +88,6 @@ impl ObjectImpl for WorkspacesImpl {
         self.parent_constructed();
 
         self.obj().add_css_class("workspaces");
-        let monitor_id = *self.monitor_id.get().unwrap();
 
         glib::spawn_future_local(clone!(
             #[weak(rename_to = me)]
@@ -96,11 +98,6 @@ impl ObjectImpl for WorkspacesImpl {
 
                 loop {
                     let workspaces = workspaces_state.next().await;
-                    let mut workspaces: Vec<HyprlandWorkspace> = workspaces
-                        .into_iter()
-                        .filter(|w| w.monitor_id == monitor_id)
-                        .collect();
-                    workspaces.sort_by_key(|w| w.id);
 
                     me.workspaces.set(workspaces);
                     me.update_buttons();

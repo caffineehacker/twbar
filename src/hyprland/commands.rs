@@ -4,8 +4,7 @@ use async_std::io::{self, ReadExt, WriteExt};
 
 use super::utils::Utils;
 
-pub struct HyprlandCommands {
-}
+pub struct HyprlandCommands {}
 
 impl HyprlandCommands {
     pub async fn send_command(command: &str) -> String {
@@ -24,7 +23,9 @@ impl HyprlandCommands {
 
             let response = String::from_utf8(final_buffer).unwrap();
             Ok(response)
-        }).await.unwrap_or_default()
+        })
+        .await
+        .unwrap_or_default()
     }
 
     pub async fn set_active_window(window_address: &str) {
