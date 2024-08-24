@@ -300,6 +300,12 @@ impl HyprlandWindows {
                             }
                             instance.force_refresh().await;
                         }
+                        HyprlandEvent::MonitorAddedV2(_) => {
+                            instance.force_refresh().await;
+                        }
+                        HyprlandEvent::MonitorRemoved(_) => {
+                            instance.force_refresh().await;
+                        }
                         _ => {}
                     }
                 }

@@ -1,5 +1,5 @@
 use std::cell::{OnceCell, RefCell};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use gio::glib::clone;
 use gio::prelude::*;
@@ -24,100 +24,40 @@ pub struct WorkspacesImpl {
 impl WorkspacesImpl {
     fn update_buttons(&self) {
         let workspaces = self.workspaces.borrow();
-        let workspaces: Vec<&HyprlandWorkspace> = workspaces
+        let mut workspaces: Vec<&HyprlandWorkspace> = workspaces
             .iter()
             .filter(|w| w.windows > 0 || w.id == *self.selected_workspace_id.borrow())
             .collect();
-        //let workspace_ids: HashSet<i32> = workspaces.iter().map(|w| w.id).collect();
-        let mut workspace_ids_already_added = HashSet::new();
+        workspaces.sort_by_key(|w| w.id);
 
+        let mut buttons = HashMap::new();
         let mut child = self.obj().first_child();
-        let mut child_index = 0;
-        let mut in_order = true;
-        while let Some(button) = child {
-            if let Some(workspace_button) = button.downcast_ref::<WorkspaceButton>() {
-                let button_id = workspace_button.workspace_id();
-                if let Some((i, _)) = workspaces
-                    .iter()
-                    .enumerate()
-                    .find(|(_i, w)| w.id == button_id)
-                {
-                    if i != child_index {
-                        in_order = false;
-                    }
-                    workspace_ids_already_added.insert(button_id);
-                } else {
-                    println!("Removing workspace {}", workspace_button.workspace_id());
-                    self.obj().remove(&button);
-                }
-            }
+        while let Some(button) = child.as_ref() {
+            let workspace_button = button.clone().downcast::<WorkspaceButton>().unwrap();
             child = button.next_sibling();
-            child_index += 1;
-        }
 
-        if in_order && child_index == workspaces.len() {
-            return;
-        }
-
-        println!("Redoing workspace buttons");
-
-        let mut append_mode = false;
-        'workspace_loop: for (index, workspace) in workspaces.into_iter().enumerate() {
-            if workspace_ids_already_added.contains(&workspace.id) {
-                // We may need to move it to the right place
-                self.move_button(workspace.id, index);
-            } else if append_mode {
-                self.obj().append(&WorkspaceButton::new(workspace));
+            let workspace_id = workspace_button.workspace_id();
+            if workspaces.iter().any(|w| w.id == workspace_id) {
+                buttons.insert(workspace_id, workspace_button);
             } else {
-                let mut child = self.obj().first_child();
-                let mut child_index = 0;
-                while let Some(button) = child {
-                    if child_index + 1 == index {
-                        self.obj()
-                            .insert_child_after(&WorkspaceButton::new(workspace), Some(&button));
-                        continue 'workspace_loop;
-                    }
-                    child = button.next_sibling();
-                    child_index += 1;
-                }
-
-                append_mode = true;
-                self.obj().append(&WorkspaceButton::new(workspace));
+                self.obj().remove(&workspace_button);
             }
         }
-    }
 
-    fn move_button(&self, id: i32, target_index: usize) {
-        let mut child = self.obj().first_child();
-        let mut child_index = 0;
-        let mut target_sibling = None;
-
-        while let Some(button) = child.clone() {
-            if target_index == child_index + 1 {
-                target_sibling = child;
+        let mut last_button = None;
+        for w in workspaces.iter() {
+            // The process is to find the button that belongs here, if no button belongs here add one
+            let button = buttons.get(&w.id);
+            if let Some(button) = button {
+                self.obj().reorder_child_after(button, last_button.as_ref());
+                last_button = Some(button.clone());
+            } else {
+                let new_button = WorkspaceButton::new(w);
+                self.obj()
+                    .insert_child_after(&new_button, last_button.as_ref());
+                last_button = Some(new_button);
             }
-
-            let child_id = button
-                .downcast_ref::<WorkspaceButton>()
-                .unwrap()
-                .workspace_id();
-            if child_id == id {
-                if child_index == target_index {
-                    return;
-                }
-                if target_sibling.is_some() || target_index == 0 {
-                    self.obj()
-                        .reorder_child_after(&button, target_sibling.as_ref());
-                    return;
-                }
-                panic!("You should call this method in order so objects are always either in the right place or moved further up!");
-            }
-
-            child = button.next_sibling();
-            child_index += 1;
         }
-
-        panic!("Could not find target child");
     }
 }
 

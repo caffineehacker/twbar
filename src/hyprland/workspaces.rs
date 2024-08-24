@@ -10,7 +10,7 @@ use super::{
     events::{HyprlandEvents, LatestEventValue, LatestEventValueListener},
 };
 
-#[derive(Clone, Default, Deserialize)]
+#[derive(Clone, Default, Deserialize, Debug)]
 pub struct HyprlandWorkspace {
     pub id: i32,
     pub name: String,
@@ -64,6 +64,15 @@ impl HyprlandWorkspaces {
                 loop {
                     let event = events.recv().await.unwrap();
                     match event {
+                        super::events::HyprlandEvent::MoveWindowV2(_) => {
+                            instance.upgrade().unwrap().force_refresh().await
+                        }
+                        super::events::HyprlandEvent::MonitorAddedV2(_) => {
+                            instance.upgrade().unwrap().force_refresh().await
+                        }
+                        super::events::HyprlandEvent::MonitorRemoved(_) => {
+                            instance.upgrade().unwrap().force_refresh().await
+                        }
                         super::events::HyprlandEvent::CreateWorkspace(_) => {
                             instance.upgrade().unwrap().force_refresh().await
                         }
