@@ -6,6 +6,7 @@ use gtk4::glib::{Object, Properties};
 use gtk4::subclass::prelude::*;
 use gtk4::{glib, Accessible, Actionable, Buildable, Button, ConstraintTarget, Label, Widget};
 use gtk4::{prelude::*, Orientation};
+use log::trace;
 
 use crate::hyprland::commands::HyprlandCommands;
 use crate::hyprland::windows::HyprlandWindow;
@@ -101,7 +102,7 @@ impl ButtonImpl for TaskbarButtonImpl {
     }
 
     fn clicked(&self) {
-        println!("Clicked");
+        trace!("Clicked");
 
         self.activate();
     }

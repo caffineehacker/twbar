@@ -12,6 +12,7 @@ use gtk4::{glib, prelude::*};
 use gtk4::{Application, ApplicationWindow};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use gtk_output::GtkOutputs;
+use log::trace;
 use std::process::Command;
 
 mod gtk_output;
@@ -168,7 +169,7 @@ fn activate(app: &Application) {
                         #[strong]
                         gtk_outputs,
                         async move {
-                            println!("Monitors changed");
+                            trace!("Monitors changed");
                             let mut windows = windows.borrow_mut();
                             let monitor_names = (0..monitors.n_items())
                                 .map(|index| {
@@ -178,7 +179,6 @@ fn activate(app: &Application) {
                                     if let Some(gdk_connector) =
                                         gdk_monitor.connector().map(|c| c.as_str().to_owned())
                                     {
-                                        println!("Connector: {}", gdk_connector);
                                         (gdk_monitor.clone(), gdk_connector)
                                     } else {
                                         let gtk_outputs = gtk_outputs.clone();
@@ -186,7 +186,6 @@ fn activate(app: &Application) {
                                             gdk_monitor.clone(),
                                             task::block_on(async move {
                                                 let name = gtk_outputs.get_name(gdk_monitor).await;
-                                                println!("Name: {}", name);
                                                 name
                                             }),
                                         )
@@ -197,13 +196,13 @@ fn activate(app: &Application) {
                             'windows_loop: for (connector, window) in windows.clone().iter() {
                                 for (_, name) in monitor_names.iter() {
                                     if *name == *connector {
-                                        println!("Monitor {} is still connected", connector);
+                                        trace!("Monitor {} is still connected", connector);
                                         continue 'windows_loop;
                                     }
                                 }
 
                                 if let Some(window) = window.upgrade() {
-                                    println!("Closing window: {}", connector);
+                                    trace!(monitor_connector = connector.as_str(); "Closing window due to monitor removal");
                                     window.close();
                                 }
                                 windows.remove(connector.as_str());
@@ -212,7 +211,7 @@ fn activate(app: &Application) {
                             // Now add new monitors
                             for (monitor, name) in monitor_names.iter() {
                                 if !windows.contains_key(name) {
-                                    println!("New monitor found: {}", name);
+                                    trace!(monitor_name = name.as_str(); "New monitor found");
                                     windows.insert(
                                         name.clone(),
                                         bar_window(&app, monitor, name).downgrade(),
@@ -231,6 +230,8 @@ fn activate(app: &Application) {
 
 #[async_std::main]
 async fn main() -> Result<glib::ExitCode, ()> {
+    env_logger::init();
+
     let app = Application::builder()
         .application_id("com.timwaterhouse.twbar")
         .build();

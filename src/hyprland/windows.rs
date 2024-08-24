@@ -3,6 +3,7 @@ use async_std::{
     task,
 };
 use gtk4::glib;
+use log::error;
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 
@@ -130,8 +131,7 @@ impl EventData for Vec<HyprlandWindow> {
         let window_data = serde_json::from_str::<Vec<HyprlandWindow>>(data);
         match window_data {
             Err(err) => {
-                println!("Failed to deserialize: {}", data);
-                println!("Error is {:?}", err);
+                error!("Failed to deserialize: '{}' error is {:?}", data, err);
                 Some(vec![])
             }
             Ok(window_data) => Some(window_data),

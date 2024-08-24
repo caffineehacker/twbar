@@ -7,6 +7,7 @@ use gtk4::glib::{Object, Properties};
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{glib, Accessible, Buildable, ConstraintTarget, Orientable, Widget};
+use log::trace;
 
 use crate::hyprland::events::{HyprlandEvent, HyprlandEvents};
 use crate::hyprland::windows::{HyprlandWindow, HyprlandWindows};
@@ -32,7 +33,7 @@ impl TaskbarImpl {
             .collect();
         windows.sort_by_key(|w| (w.workspace.id, w.at));
 
-        println!("Windows: {:?}", windows);
+        trace!("Windows: {:?}", windows);
 
         let mut buttons = HashMap::new();
         let mut child = self.obj().first_child();

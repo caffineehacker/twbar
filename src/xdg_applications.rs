@@ -1,5 +1,6 @@
 use async_std::sync::{Arc, Mutex, Weak};
 use gio::DesktopAppInfo;
+use log::trace;
 
 struct XdgApplication {
     name: String,
@@ -38,7 +39,7 @@ impl XdgApplicationsCache {
 
         for outer in matches {
             for desktop_id in outer {
-                println!("Found match {} -> {}", class_name, desktop_id);
+                trace!("Found match {} -> {}", class_name, desktop_id);
                 if let Some(info) = gio::DesktopAppInfo::new(desktop_id.as_str()) {
                     return Some(info);
                 }

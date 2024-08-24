@@ -8,6 +8,7 @@ use async_std::{
     sync::{Arc, Mutex, RwLock, Weak},
     task,
 };
+use log::{debug, trace};
 use wayland_client::{
     backend::ObjectId,
     event_created_child,
@@ -265,7 +266,7 @@ impl Dispatch<ExtForeignToplevelHandleV1, ()> for WaylandDispatchReceiver {
         // Window, is_new, is_deleted
         static WINDOW_STATE: Mutex<(Option<ExtForeignToplevel>, bool, bool)> =
             Mutex::new((None, false, false));
-        println!("Ext window event received");
+        debug!("Ext window event received");
 
         task::block_on(async {
             let mut window_state = WINDOW_STATE.lock().await;
@@ -339,7 +340,7 @@ impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for WaylandDispatchReceiver {
         match event {
             zwlr_foreign_toplevel_manager_v1::Event::Toplevel { toplevel: _ } => {}
             zwlr_foreign_toplevel_manager_v1::Event::Finished => {
-                println!("Top level manager finished")
+                debug!("Top level manager finished")
             }
             _ => todo!(),
         }
@@ -420,7 +421,7 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for WaylandDispatchReceiver {
                     *window_opt = None;
                 }
                 zwlr_foreign_toplevel_handle_v1::Event::Closed => {
-                    println!("{0}: Closed", handle.id())
+                    trace!("{0}: Closed", handle.id())
                 }
                 _ => todo!(),
             }
@@ -443,7 +444,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandDispatchReceiver {
                 interface,
                 version,
             } => {
-                println!("New global: {0}: {1} version={2}", name, interface, version);
+                trace!("New global: {0}: {1} version={2}", name, interface, version);
                 match interface.as_str() {
                     "zwlr_foreign_toplevel_manager_v1" => {
                         registry.bind::<ZwlrForeignToplevelManagerV1, _, _>(name, version, qh, ());
@@ -461,7 +462,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandDispatchReceiver {
                 }
             }
             wl_registry::Event::GlobalRemove { name } => {
-                println!("Global removed {0}", name);
+                trace!("Global removed {0}", name);
             }
             _ => todo!(),
         }
@@ -477,7 +478,7 @@ impl Dispatch<WlOutput, ()> for WaylandDispatchReceiver {
         _conn: &Connection,
         _qhandle: &QueueHandle<Self>,
     ) {
-        println!("WLOuput ID: {:?}, event: {:?}", _proxy, _event);
+        trace!("WLOuput ID: {:?}, event: {:?}", _proxy, _event);
     }
 }
 

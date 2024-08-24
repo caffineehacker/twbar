@@ -2,6 +2,7 @@ use async_std::{
     sync::{Arc, Mutex, Weak},
     task,
 };
+use log::error;
 use serde::Deserialize;
 
 use super::{
@@ -104,7 +105,7 @@ impl HyprlandMonitors {
                     let monitors = HyprlandCommands::send_command("j/monitors").await;
                     let deserialized = serde_json::from_str::<Vec<HyprlandMonitor>>(&monitors);
                     if deserialized.is_err() {
-                        println!(
+                        error!(
                             "Failed to deserialize: {}, {}",
                             monitors,
                             deserialized.err().unwrap()

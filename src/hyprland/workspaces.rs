@@ -3,6 +3,7 @@ use async_std::{
     task,
 };
 use gio::glib::clone::Downgrade;
+use log::error;
 use serde::Deserialize;
 
 use super::{
@@ -115,7 +116,7 @@ impl HyprlandWorkspaces {
                     let workspaces = HyprlandCommands::send_command("j/workspaces").await;
                     let deserialized = serde_json::from_str::<Vec<HyprlandWorkspace>>(&workspaces);
                     if deserialized.is_err() {
-                        println!(
+                        error!(
                             "Failed to deserialize: {}, {}",
                             workspaces,
                             deserialized.err().unwrap()

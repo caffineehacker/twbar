@@ -5,6 +5,7 @@ use gtk4::glib::{Object, Properties};
 use gtk4::subclass::prelude::*;
 use gtk4::{glib, Accessible, Actionable, Buildable, Button, ConstraintTarget, Widget};
 use gtk4::{prelude::*, Orientation};
+use log::trace;
 
 use crate::hyprland::commands::HyprlandCommands;
 use crate::hyprland::workspaces::HyprlandWorkspace;
@@ -51,7 +52,7 @@ impl WidgetImpl for WorkspaceButtonImpl {}
 // Trait shared by all buttons
 impl ButtonImpl for WorkspaceButtonImpl {
     fn activate(&self) {
-        println!("Activating workspace");
+        trace!("Activating workspace");
 
         let workspace_id = *self.workspace_id.borrow();
         glib::spawn_future_local(async move {
@@ -60,7 +61,7 @@ impl ButtonImpl for WorkspaceButtonImpl {
     }
 
     fn clicked(&self) {
-        println!("Clicked");
+        trace!("Clicked");
 
         self.activate();
     }

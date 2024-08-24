@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 # Even though we don't depend on wayland-sys directly, we need to use dlopen so we don't
 # load wayland-client before gtk4-layer-shell.
+log = { version = "0.4", features = ["std", "kv"] }
+env_logger = "0.11"
 wayland-sys = { version = "*", features = ["dlopen"] }
 gtk4-layer-shell = "0.4"
 gtk4 = { version = "0.9", features = ["v4_14"] }

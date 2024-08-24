@@ -6,6 +6,7 @@ use async_std::{
     task,
 };
 use gio::glib::clone::Downgrade;
+use log::error;
 
 use super::utils::Utils;
 
@@ -106,7 +107,7 @@ impl EventData for HyprlandEvent {
                 _ => None,
             };
             if parsed_command.is_none() {
-                println!("Failed to parse command: {}>>{}", command, data);
+                error!("Failed to parse command: {}>>{}", command, data);
             }
             parsed_command
         } else {
