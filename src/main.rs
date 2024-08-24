@@ -364,33 +364,19 @@ async fn main() -> Result<glib::ExitCode, ()> {
         let provider = CssProvider::new();
         provider.load_from_string(
             "
-.workspace {
-    padding: 5px;
-    margin-right: 5px;
-    border-radius: 10px;
-}
-
-#workspaces button {
+.workspace_button {
     padding: 5px;
     margin-right: 5px;
 }
 
-#workspaces button.active {
-    border-radius: 10px;
+.workspace_button.active {
+	background-color: rgba(198,208,245,0.12);
 }
 
-#workspaces button:hover {
-    border-radius: 10px;
-}
-
-#workspaces {
-    opacity: 1;
+.workspaces {
     padding: 0px 8px;
     margin: 0px 3px;
     border: 0px;
-}
-
-#workspaces {
     padding-right: 0px;
     padding-left: 5px;
 }

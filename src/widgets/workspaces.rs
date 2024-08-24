@@ -38,6 +38,9 @@ impl WorkspacesImpl {
 
             let workspace_id = workspace_button.workspace_id();
             if workspaces.iter().any(|w| w.id == workspace_id) {
+                if workspace_id != *self.selected_workspace_id.borrow() {
+                    workspace_button.remove_css_class("active");
+                }
                 buttons.insert(workspace_id, workspace_button);
             } else {
                 self.obj().remove(&workspace_button);
@@ -49,10 +52,16 @@ impl WorkspacesImpl {
             // The process is to find the button that belongs here, if no button belongs here add one
             let button = buttons.get(&w.id);
             if let Some(button) = button {
+                if w.id == *self.selected_workspace_id.borrow() {
+                    button.add_css_class("active");
+                }
                 self.obj().reorder_child_after(button, last_button.as_ref());
                 last_button = Some(button.clone());
             } else {
                 let new_button = WorkspaceButton::new(w);
+                if w.id == *self.selected_workspace_id.borrow() {
+                    new_button.add_css_class("active");
+                }
                 self.obj()
                     .insert_child_after(&new_button, last_button.as_ref());
                 last_button = Some(new_button);
@@ -75,7 +84,7 @@ impl ObjectImpl for WorkspacesImpl {
     fn constructed(&self) {
         self.parent_constructed();
 
-        self.obj().set_widget_name("workspaces");
+        self.obj().add_css_class("workspaces");
         let monitor_id = *self.monitor_id.get().unwrap();
 
         glib::spawn_future_local(clone!(

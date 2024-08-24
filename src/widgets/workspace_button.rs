@@ -40,8 +40,7 @@ impl ObjectImpl for WorkspaceButtonImpl {
         container.set_halign(gtk4::Align::Center);
         self.obj().set_child(Some(&container));
         self.obj().set_has_frame(false);
-        self.obj().add_css_class("workspace");
-        self.obj().add_css_class("circular");
+        self.obj().add_css_class("workspace_button");
         self.obj().set_focusable(false);
     }
 }
