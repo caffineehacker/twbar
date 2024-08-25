@@ -1,5 +1,5 @@
 use std::cell::{OnceCell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use gio::glib::clone;
 use gio::prelude::*;

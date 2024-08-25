@@ -185,8 +185,7 @@ fn activate(app: &Application) {
                                         (
                                             gdk_monitor.clone(),
                                             task::block_on(async move {
-                                                let name = gtk_outputs.get_name(gdk_monitor).await;
-                                                name
+                                                gtk_outputs.get_name(gdk_monitor).await
                                             }),
                                         )
                                     }

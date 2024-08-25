@@ -408,9 +408,6 @@ impl EventData for ActiveWindow {
     }
 }
 
-#[derive(Clone)]
-pub struct Workspace {}
-
 pub(super) struct LatestEventValue<T> {
     pub current_value: Mutex<(i64, T)>,
 
