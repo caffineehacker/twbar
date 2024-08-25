@@ -24,8 +24,7 @@ impl TaskbarButtonImpl {
     fn set_hyprland_window(&self, current_window: HyprlandWindow) {
         let previous_window = self.hyprland_window.replace(current_window.clone());
         if !current_window.title.is_empty() {
-            // Any tooltip currently seg faults on hover for some reason...
-            // button.set_tooltip_text(Some(&current_window.title));
+            self.obj().set_tooltip_text(Some(&current_window.title));
         }
 
         if previous_window.class != current_window.class

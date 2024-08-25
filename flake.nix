@@ -10,7 +10,15 @@
   outputs = { self, nixpkgs, rust-overlay, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        overlays = [ (import rust-overlay) ];
+        overlays = [
+          (import rust-overlay)
+          # Fix crash with tooltips: https://github.com/wmww/gtk4-layer-shell/issues/24
+          (self: super: {
+            gtk4-layer-shell = super.gtk4-layer-shell.overrideAttrs (oldAttrs: {
+              nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [ super.wayland-protocols ];
+            });
+          })
+      ];
         pkgs = import nixpkgs {
           inherit system overlays;
         };
