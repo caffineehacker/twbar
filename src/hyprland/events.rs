@@ -101,9 +101,12 @@ impl EventData for HyprlandEvent {
                 "closewindow" => Some(Self::CloseWindow(format!("0x{}", data.to_owned()))),
                 "movewindow" => MoveWindow::parse(data).map(Self::MoveWindow),
                 "movewindowv2" => MoveWindowV2::parse(data).map(Self::MoveWindowV2),
+                "openlayer" => Some(Self::OpenLayer(data.to_owned())),
                 "changefloatingmode" => {
                     ChangeFloatingMode::parse(data).map(Self::ChangeFloatingMode)
                 }
+                "windowtitle" => Some(Self::WindowTitle(data.to_owned())),
+                "windowtitlev2" => WindowTitleV2::parse(data).map(Self::WindowTitleV2),
                 _ => None,
             };
             if parsed_command.is_none() {
@@ -345,6 +348,19 @@ pub struct Screencast {
 pub struct WindowTitleV2 {
     address: String,
     title: String,
+}
+
+impl EventData for WindowTitleV2 {
+    fn parse(data: &str) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        let (address, title) = data.split_once(",")?;
+        Some(Self {
+            address: address.to_owned(),
+            title: title.to_owned(),
+        })
+    }
 }
 
 #[derive(Clone, Debug)]

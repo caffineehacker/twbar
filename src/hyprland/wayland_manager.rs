@@ -125,24 +125,6 @@ impl WaylandManager {
 
             queue.roundtrip(&mut state).unwrap();
 
-            // let (globals, mut queue) =
-            //     registry_queue_init::<WaylandDispatchReceiver>(&conn).unwrap();
-
-            // globals
-            //     .bind::<ZwlrForeignToplevelManagerV1, _, _>(&queue.handle(), 1..=3, ())
-            //     .unwrap();
-            // globals
-            //     .bind::<ExtForeignToplevelListV1, _, _>(&queue.handle(), 1..=1, ())
-            //     .unwrap();
-            // globals
-            //     .bind::<ZwlrOutputManagerV1, _, _>(&queue.handle(), 1..=4, ())
-            //     .unwrap();
-
-            // let result = queue.roundtrip(&mut state);
-            // if result.is_err() {
-            //     panic!("Failed to roundtrip: {}", result.err().unwrap());
-            // }
-
             loop {
                 queue.blocking_dispatch(&mut state).unwrap();
             }
@@ -558,12 +540,12 @@ impl Dispatch<ZwlrOutputHeadV1, ()> for WaylandDispatchReceiver {
 
 impl Dispatch<ZwlrOutputModeV1, ()> for WaylandDispatchReceiver {
     fn event(
-        state: &mut Self,
-        proxy: &ZwlrOutputModeV1,
-        event: <ZwlrOutputModeV1 as Proxy>::Event,
-        data: &(),
-        conn: &Connection,
-        qhandle: &QueueHandle<Self>,
+        _state: &mut Self,
+        _proxy: &ZwlrOutputModeV1,
+        _event: <ZwlrOutputModeV1 as Proxy>::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qhandle: &QueueHandle<Self>,
     ) {
     }
 }

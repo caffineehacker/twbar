@@ -141,7 +141,6 @@ impl EventData for Vec<HyprlandWindow> {
 
 pub struct HyprlandWindows {
     windows: Arc<LatestEventValue<Vec<HyprlandWindow>>>,
-    wayland_manager: Arc<WaylandManager>,
 }
 
 impl HyprlandWindows {
@@ -162,10 +161,7 @@ impl HyprlandWindows {
     async fn new() -> Arc<Self> {
         let windows = Arc::new(LatestEventValue::new());
 
-        let instance = Arc::new(Self {
-            windows,
-            wayland_manager: WaylandManager::instance().await,
-        });
+        let instance = Arc::new(Self { windows });
 
         {
             let instance = instance.clone();
