@@ -394,17 +394,17 @@ impl EventData for WorkspaceV2 {
 
 #[derive(Clone, Debug)]
 pub struct FocusedMon {
-    pub id: String,
-    pub name: String,
+    pub monitor_name: String,
+    pub workspace_name: String,
 }
 
 impl EventData for FocusedMon {
     fn parse(data: &str) -> Option<Self> {
-        let (id, name) = data.split_once(',')?;
+        let (monitor_name, workspace_name) = data.split_once(',')?;
 
         Some(Self {
-            id: id.to_owned(),
-            name: name.to_owned(),
+            monitor_name: monitor_name.to_owned(),
+            workspace_name: workspace_name.to_owned(),
         })
     }
 }

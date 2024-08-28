@@ -100,6 +100,24 @@ impl HyprlandWorkspaces {
                                 .update(workspace.id)
                                 .await;
                         }
+                        super::events::HyprlandEvent::FocusedMon(focused_mon) => {
+                            // TODO: This should probably send the command "activeworkspace" to get all of the info about the current workspace including the id. String matching the name is not guaranteed to be correct.
+                            let workspace_name = &focused_mon.workspace_name;
+                            let instance = instance.upgrade().unwrap();
+                            let workspaces = instance.workspaces.current_value.lock().await;
+                            let workspace_id = workspaces.1.iter().find_map(|w| {
+                                if w.name == *workspace_name {
+                                    Some(w.id)
+                                } else {
+                                    None
+                                }
+                            });
+                            if let Some(workspace_id) = workspace_id {
+                                instance.active_workspace_id.update(workspace_id).await;
+                            } else {
+                                log::warn!("Failed to find workspace for focusedmon event. Event: {:?}\n\nWorkspaces: {:?}", focused_mon, workspaces);
+                            }
+                        }
                         _ => {}
                     }
                 }
