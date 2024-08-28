@@ -1,3 +1,4 @@
+pub mod command_button;
 pub mod taskbar;
 pub mod taskbar_button;
 pub mod workspace_button;

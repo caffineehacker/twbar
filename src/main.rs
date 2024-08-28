@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::process::Stdio;
 use std::sync::Arc;
 
 use async_std::task;
@@ -13,7 +12,7 @@ use gtk4::{Application, ApplicationWindow};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use gtk_output::GtkOutputs;
 use log::trace;
-use std::process::Command;
+use widgets::command_button::ButtonCommand;
 
 mod gtk_output;
 mod hyprland;
@@ -24,35 +23,25 @@ use hyprland::events::HyprlandEvents;
 use hyprland::monitors::HyprlandMonitors;
 
 fn launch_wofi_button() -> gtk::Widget {
-    let event_controller = gtk::GestureClick::new();
-    let container = gtk::Box::new(Orientation::Horizontal, 0);
-
-    let label = gtk::Label::new(Some(""));
-    // The glyph is really 2 chars wide
-    label.set_width_chars(2);
-    label.set_halign(gtk4::Align::Center);
-    container.append(&label);
-    container.set_halign(gtk4::Align::Center);
-
-    event_controller.connect_released(|_box, _, _, _| {
-        Command::new("pkill")
-            .args(["wofi"])
-            .stderr(Stdio::null())
-            .stdout(Stdio::null())
-            .output()
-            .ok();
-
-        Command::new("wofi")
-            .args(["-c", "/home/tim/.config/wofi/config-bmenu"])
-            .stderr(Stdio::null())
-            .stdout(Stdio::null())
-            .spawn()
-            .ok();
-    });
-
-    container.add_controller(event_controller);
-
-    container.into()
+    widgets::command_button::CommandButton::new(
+        "",
+        vec![
+            ButtonCommand {
+                command: "pkill".to_owned(),
+                args: vec!["wofi".to_owned()],
+                allow_failure: true,
+            },
+            ButtonCommand {
+                command: "wofi".to_owned(),
+                args: vec![
+                    "-c".to_owned(),
+                    "/home/tim/.config/wofi/config-bmenu".to_owned(),
+                ],
+                allow_failure: true,
+            },
+        ],
+    )
+    .into()
 }
 
 //               "custom/power_btn" = {
