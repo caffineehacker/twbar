@@ -44,17 +44,20 @@ fn launch_wofi_button() -> gtk::Widget {
     .into()
 }
 
-//               "custom/power_btn" = {
-//                 format = "";
-//                 on-click = "sh -c '(sleep 0.5s; wlogout --protocol layer-shell)' & disown";
-//                 tooltip = false;
-//               };
-
-//               "custom/lock_screen" = {
-//                 format = "";
-//                 on-click = "sh -c '(sleep 0.5s; swaylock)' & disown";
-//                 tooltip = false;
-//               };
+fn power_button() -> gtk::Widget {
+    widgets::command_button::CommandButton::new(
+        "",
+        vec![ButtonCommand {
+            command: "sh".to_owned(),
+            args: vec![
+                "-c".to_owned(),
+                "(sleep 0.5s; wlogout --protocol layer-shell) & disown".to_owned(),
+            ],
+            allow_failure: false,
+        }],
+    )
+    .into()
+}
 
 fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> ApplicationWindow {
     let window = ApplicationWindow::new(app);
@@ -87,6 +90,7 @@ fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> Applicat
 
             let hbox = gtk::Box::new(Orientation::Horizontal, 8);
             hbox.append(&launch_wofi_button());
+            hbox.append(&power_button());
             hbox.append(&widgets::workspaces::Workspaces::new(hyprland_monitor.id));
             hbox.append(&widgets::taskbar::Taskbar::new(hyprland_monitor.id));
 
