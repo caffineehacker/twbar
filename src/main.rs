@@ -6,7 +6,7 @@ use async_std::task;
 use glib::clone;
 use gtk4::gdk::{Display, Monitor};
 use gtk4::prelude::DisplayExt;
-use gtk4::{self as gtk, CssProvider, DebugFlags, Label, Orientation};
+use gtk4::{self as gtk, Align, CssProvider, DebugFlags, Label, Orientation};
 use gtk4::{glib, prelude::*};
 use gtk4::{Application, ApplicationWindow};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
@@ -93,7 +93,13 @@ fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> Applicat
             hbox.append(&power_button());
             hbox.append(&widgets::workspaces::Workspaces::new(hyprland_monitor.id));
             hbox.append(&widgets::taskbar::Taskbar::new(hyprland_monitor.id));
-            hbox.append(&widgets::cpu_usage::CpuUsage::new());
+
+            hbox.set_hexpand(true);
+            let right_box = gtk::Box::new(Orientation::Horizontal, 8);
+            right_box.set_halign(Align::End);
+            right_box.set_hexpand(true);
+            right_box.append(&widgets::cpu_usage::CpuUsage::new());
+            hbox.append(&right_box);
 
             let vbox = gtk::Box::new(Orientation::Vertical, 1);
             vbox.append(&hbox);
