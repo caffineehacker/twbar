@@ -88,6 +88,7 @@ impl ObjectImpl for WorkspacesImpl {
         self.parent_constructed();
 
         self.obj().add_css_class("workspaces");
+        self.obj().set_spacing(0);
 
         glib::spawn_future_local(clone!(
             #[weak(rename_to = me)]
