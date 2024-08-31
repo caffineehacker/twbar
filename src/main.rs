@@ -93,6 +93,7 @@ fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> Applicat
             hbox.append(&power_button());
             hbox.append(&widgets::workspaces::Workspaces::new(hyprland_monitor.id));
             hbox.append(&widgets::taskbar::Taskbar::new(hyprland_monitor.id));
+            hbox.append(&widgets::cpu_usage::CpuUsage::new());
 
             let vbox = gtk::Box::new(Orientation::Vertical, 1);
             vbox.append(&hbox);
@@ -234,7 +235,7 @@ async fn main() -> Result<glib::ExitCode, ()> {
             "
 .workspace_button {
     padding: 5px;
-    margin-right: 5px;
+    margin-right: 0px;
 }
 
 .workspace_button.active {
