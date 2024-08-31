@@ -88,18 +88,22 @@ fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> Applicat
                 .find(|m| m.name == connector)
                 .unwrap_or_else(|| panic!("Failed to find monitor match {}", connector));
 
-            let hbox = gtk::Box::new(Orientation::Horizontal, 8);
-            hbox.append(&launch_wofi_button());
-            hbox.append(&power_button());
-            hbox.append(&widgets::workspaces::Workspaces::new(hyprland_monitor.id));
-            hbox.append(&widgets::taskbar::Taskbar::new(hyprland_monitor.id));
+            let left_box = gtk::Box::new(Orientation::Horizontal, 8);
+            left_box.set_halign(Align::Start);
+            left_box.append(&launch_wofi_button());
+            left_box.append(&power_button());
+            left_box.append(&widgets::workspaces::Workspaces::new(hyprland_monitor.id));
 
-            hbox.set_hexpand(true);
+            let center_box = gtk::Box::new(Orientation::Horizontal, 8);
+            center_box.append(&widgets::taskbar::Taskbar::new(hyprland_monitor.id));
+
             let right_box = gtk::Box::new(Orientation::Horizontal, 8);
-            right_box.set_halign(Align::End);
-            right_box.set_hexpand(true);
             right_box.append(&widgets::cpu_usage::CpuUsage::new());
-            hbox.append(&right_box);
+
+            let hbox = gtk::CenterBox::new();
+            hbox.set_start_widget(Some(&left_box));
+            hbox.set_center_widget(Some(&center_box));
+            hbox.set_end_widget(Some(&right_box));
 
             let vbox = gtk::Box::new(Orientation::Vertical, 1);
             vbox.append(&hbox);
@@ -264,6 +268,14 @@ async fn main() -> Result<glib::ExitCode, ()> {
 
 .taskbar_button.active {
 	background-color: rgba(198,208,245,0.12);
+}
+
+tooltip {
+    background: rgba(198,208,245,0.12);
+    opacity: 0.8;
+    border-radius: 10px;
+    border-width: 2px;
+    border-style: solid;
 }
         ",
         );
