@@ -4,7 +4,10 @@ use gio::glib::clone;
 use gio::prelude::*;
 use gtk4::glib::{Object, Properties};
 use gtk4::subclass::prelude::*;
-use gtk4::{glib, Accessible, Actionable, Buildable, Button, ConstraintTarget, Label, Widget};
+use gtk4::{
+    glib, Accessible, Actionable, Buildable, Button, ConstraintTarget, EventControllerMotion,
+    Label, Popover, Widget,
+};
 use gtk4::{prelude::*, Orientation};
 use log::trace;
 
@@ -18,14 +21,13 @@ use crate::xdg_applications::XdgApplicationsCache;
 pub struct TaskbarButtonImpl {
     #[property(get, set = Self::set_hyprland_window, construct)]
     hyprland_window: RefCell<HyprlandWindow>,
+    window_title: RefCell<String>,
 }
 
 impl TaskbarButtonImpl {
     fn set_hyprland_window(&self, current_window: HyprlandWindow) {
         let previous_window = self.hyprland_window.replace(current_window.clone());
-        if !current_window.title.is_empty() {
-            self.obj().set_tooltip_text(Some(&current_window.title));
-        }
+        self.window_title.set(current_window.title);
 
         if previous_window.class != current_window.class
             || previous_window.initial_class != current_window.initial_class
@@ -81,6 +83,35 @@ impl ObjectImpl for TaskbarButtonImpl {
         self.obj().set_has_frame(false);
         self.obj().add_css_class("taskbar_button");
         self.obj().set_focusable(false);
+
+        let label = Label::new(Some(""));
+        let popup = Popover::new();
+        popup.set_child(Some(&label));
+        popup.set_parent(self.obj().upcast_ref::<Widget>());
+        //popup.set_offset(0, -200);
+        popup.set_autohide(false);
+        popup.set_focusable(false);
+        popup.set_can_focus(false);
+
+        let event_controller = EventControllerMotion::new();
+        event_controller.connect_enter(clone!(
+            #[weak]
+            popup,
+            #[weak(rename_to = me)]
+            self,
+            move |_ec, _, _| {
+                label.set_text(&me.window_title.borrow());
+                popup.popup();
+            }
+        ));
+        event_controller.connect_leave(clone!(
+            #[weak]
+            popup,
+            move |_| {
+                popup.popdown();
+            }
+        ));
+        self.obj().add_controller(event_controller);
     }
 }
 
