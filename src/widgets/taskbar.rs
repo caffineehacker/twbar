@@ -91,9 +91,11 @@ impl ObjectImpl for TaskbarImpl {
 
         self.obj().add_css_class("taskbar");
 
+        let self_ref = self.downgrade();
+
         glib::spawn_future_local(clone!(
-            #[weak(rename_to = me)]
-            self,
+            #[strong]
+            self_ref,
             async move {
                 let hyprland_windows = HyprlandWindows::instance().await;
                 let mut windows_state = hyprland_windows.get_windows_update_emitter();
@@ -101,15 +103,20 @@ impl ObjectImpl for TaskbarImpl {
                 loop {
                     let windows = windows_state.next().await;
 
-                    me.windows.set(windows);
-                    me.update_buttons();
+                    match self_ref.upgrade() {
+                        Some(me) => {
+                            me.windows.set(windows);
+                            me.update_buttons();
+                        }
+                        None => return,
+                    };
                 }
             }
         ));
 
         glib::spawn_future_local(clone!(
-            #[weak(rename_to = me)]
-            self,
+            #[strong]
+            self_ref,
             async move {
                 let events = HyprlandEvents::instance().await;
                 let mut event_stream = events.get_event_stream().await;
@@ -117,8 +124,13 @@ impl ObjectImpl for TaskbarImpl {
                 loop {
                     match event_stream.recv_direct().await {
                         Ok(HyprlandEvent::ActiveWindowV2(address)) => {
-                            me.selected_address.set(address);
-                            me.update_buttons();
+                            match self_ref.upgrade() {
+                                Some(me) => {
+                                    me.selected_address.set(address);
+                                    me.update_buttons();
+                                }
+                                None => return,
+                            };
                         }
                         Ok(_) => {}
                         _ => return,

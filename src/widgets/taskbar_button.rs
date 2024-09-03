@@ -88,7 +88,6 @@ impl ObjectImpl for TaskbarButtonImpl {
         let popup = Popover::new();
         popup.set_child(Some(&label));
         popup.set_parent(self.obj().upcast_ref::<Widget>());
-        //popup.set_offset(0, -200);
         popup.set_autohide(false);
         popup.set_focusable(false);
         popup.set_can_focus(false);

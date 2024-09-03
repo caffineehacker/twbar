@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::time::Duration;
 use std::{io::Error, str::FromStr};
 
@@ -5,10 +6,14 @@ use async_std::task::sleep;
 use async_std::{fs::File, io::ReadExt};
 
 use gio::glib::clone;
+use gio::glib::property::PropertySet;
 use gio::prelude::*;
 use gtk4::glib::Object;
 use gtk4::subclass::prelude::*;
-use gtk4::{glib, Accessible, Buildable, ConstraintTarget, Orientable, Widget};
+use gtk4::{
+    glib, Accessible, Buildable, ConstraintTarget, EventControllerMotion, Orientable, Popover,
+    Widget,
+};
 use gtk4::{prelude::*, Label};
 
 struct CpuStat {
@@ -85,7 +90,9 @@ async fn read_cpu_info() -> Result<Vec<CpuStat>, Error> {
 
 // Object holding the state
 #[derive(Default)]
-pub struct CpuUsageImpl {}
+pub struct CpuUsageImpl {
+    tooltip_text: RefCell<String>,
+}
 
 impl CpuUsageImpl {}
 
@@ -105,6 +112,9 @@ impl ObjectImpl for CpuUsageImpl {
         self.obj().add_css_class("cpu_usage");
         let label = Label::new(Some(""));
         self.obj().append(&label);
+
+        let me = self.downgrade();
+        let label_ref = label.downgrade();
 
         glib::spawn_future_local(async move {
             let mut prev_cpu_info = Vec::new();
@@ -129,20 +139,58 @@ impl ObjectImpl for CpuUsageImpl {
                                     ((total_diff - idle_diff) * 100) / total_diff.max(1);
 
                                 if i == 0 {
-                                    label.set_text(&format!("   {}%", usage_percentage));
+                                    match label_ref.upgrade() {
+                                        Some(label) => {
+                                            label.set_text(&format!("   {}%", usage_percentage))
+                                        }
+                                        None => return,
+                                    };
                                     tooltip_text.push_str(&format!("Total: {}%", usage_percentage));
                                 } else {
                                     tooltip_text
                                         .push_str(&format!("\nCore {}: {}%", i, usage_percentage));
                                 }
                             }
-                            label.set_tooltip_text(Some(&tooltip_text));
+                            match me.upgrade() {
+                                Some(me) => me.tooltip_text.set(tooltip_text),
+                                None => return,
+                            };
                         }
                     }
                 };
                 sleep(Duration::from_secs(1)).await;
             }
         });
+
+        let label = Label::new(Some(""));
+        let popup = Popover::new();
+        popup.set_child(Some(&label));
+        popup.set_parent(self.obj().upcast_ref::<Widget>());
+        popup.set_autohide(false);
+        popup.set_focusable(false);
+        popup.set_can_focus(false);
+
+        let event_controller = EventControllerMotion::new();
+        event_controller.connect_enter(clone!(
+            #[weak]
+            popup,
+            #[weak(rename_to = me)]
+            self,
+            move |_ec, _, _| {
+                label.set_text(&me.tooltip_text.borrow());
+                popup.popup();
+            }
+        ));
+        event_controller.connect_leave(clone!(
+            #[weak]
+            popup,
+            move |_| {
+                popup.popdown();
+            }
+        ));
+        self.obj().add_controller(event_controller);
+        // Unparent to avoid the warning about a destroyed widget having children.
+        self.obj().connect_destroy(move |_| popup.unparent());
     }
 }
 
