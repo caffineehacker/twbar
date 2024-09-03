@@ -112,6 +112,8 @@ impl ObjectImpl for TaskbarButtonImpl {
             }
         ));
         self.obj().add_controller(event_controller);
+        // Unparent to avoid the warning about a destroyed widget having children.
+        self.obj().connect_destroy(move |_| popup.unparent());
     }
 }
 
