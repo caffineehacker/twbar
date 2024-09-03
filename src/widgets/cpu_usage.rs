@@ -70,13 +70,6 @@ impl CpuStat {
     }
 }
 
-struct CoreTiming {
-    idle_time: i64,
-    total_time: i64,
-}
-
-struct CpuUsageStats {}
-
 async fn read_cpu_info() -> Result<Vec<CpuStat>, Error> {
     let mut stat = File::open("/proc/stat").await?;
     let mut buf: String = String::default();
