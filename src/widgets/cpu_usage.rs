@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::time::Duration;
 use std::{io::Error, str::FromStr};
 
@@ -83,9 +83,7 @@ async fn read_cpu_info() -> Result<Vec<CpuStat>, Error> {
 
 // Object holding the state
 #[derive(Default)]
-pub struct CpuUsageImpl {
-    tooltip_text: RefCell<String>,
-}
+pub struct CpuUsageImpl {}
 
 impl CpuUsageImpl {}
 
@@ -108,6 +106,16 @@ impl ObjectImpl for CpuUsageImpl {
 
         let me = self.downgrade();
         let label_ref = label.downgrade();
+
+        let popup_label = Label::new(Some(""));
+        let popup = Popover::new();
+        popup.set_child(Some(&popup_label));
+        popup.set_parent(self.obj().upcast_ref::<Widget>());
+        popup.set_autohide(false);
+        popup.set_focusable(false);
+        popup.set_can_focus(false);
+
+        let popup_label_ref = popup_label.downgrade();
 
         glib::spawn_future_local(async move {
             let mut prev_cpu_info = Vec::new();
@@ -136,7 +144,10 @@ impl ObjectImpl for CpuUsageImpl {
                                         Some(label) => {
                                             label.set_text(&format!("   {}%", usage_percentage))
                                         }
-                                        None => return,
+                                        None => {
+                                            log::trace!("Label ref upgrade failed");
+                                            return;
+                                        }
                                     };
                                     tooltip_text.push_str(&format!("Total: {}%", usage_percentage));
                                 } else {
@@ -144,9 +155,12 @@ impl ObjectImpl for CpuUsageImpl {
                                         .push_str(&format!("\nCore {}: {}%", i, usage_percentage));
                                 }
                             }
-                            match me.upgrade() {
-                                Some(me) => me.tooltip_text.set(tooltip_text),
-                                None => return,
+                            match popup_label_ref.upgrade() {
+                                Some(label) => label.set_text(&tooltip_text),
+                                None => {
+                                    log::trace!("Popup label upgrade failed");
+                                    return;
+                                }
                             };
                         }
                     }
@@ -155,22 +169,11 @@ impl ObjectImpl for CpuUsageImpl {
             }
         });
 
-        let label = Label::new(Some(""));
-        let popup = Popover::new();
-        popup.set_child(Some(&label));
-        popup.set_parent(self.obj().upcast_ref::<Widget>());
-        popup.set_autohide(false);
-        popup.set_focusable(false);
-        popup.set_can_focus(false);
-
         let event_controller = EventControllerMotion::new();
         event_controller.connect_enter(clone!(
             #[weak]
             popup,
-            #[weak(rename_to = me)]
-            self,
             move |_ec, _, _| {
-                label.set_text(&me.tooltip_text.borrow());
                 popup.popup();
             }
         ));
@@ -183,7 +186,10 @@ impl ObjectImpl for CpuUsageImpl {
         ));
         self.obj().add_controller(event_controller);
         // Unparent to avoid the warning about a destroyed widget having children.
-        self.obj().connect_destroy(move |_| popup.unparent());
+        self.obj().connect_destroy(move |_| {
+            log::trace!("CPU Usage destroy");
+            popup.unparent();
+        });
     }
 }
 
