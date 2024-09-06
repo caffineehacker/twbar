@@ -1,12 +1,10 @@
-use std::cell::{OnceCell, RefCell};
 use std::time::Duration;
 use std::{io::Error, str::FromStr};
 
 use async_std::task::sleep;
 use async_std::{fs::File, io::ReadExt};
 
-use gio::glib::clone;
-use gio::glib::property::PropertySet;
+use gio::glib::{clone, random_int};
 use gio::prelude::*;
 use gtk4::glib::Object;
 use gtk4::subclass::prelude::*;
@@ -104,7 +102,6 @@ impl ObjectImpl for CpuUsageImpl {
         let label = Label::new(Some(""));
         self.obj().append(&label);
 
-        let me = self.downgrade();
         let label_ref = label.downgrade();
 
         let popup_label = Label::new(Some(""));
@@ -115,10 +112,12 @@ impl ObjectImpl for CpuUsageImpl {
         popup.set_focusable(false);
         popup.set_can_focus(false);
 
+        let random_id = random_int();
+
         let popup_label_ref = popup_label.downgrade();
 
         glib::spawn_future_local(async move {
-            let mut prev_cpu_info = Vec::new();
+            let mut prev_cpu_info: Vec<CpuStat> = Vec::new();
             loop {
                 let cpu_info = read_cpu_info().await;
                 match cpu_info {
@@ -126,9 +125,7 @@ impl ObjectImpl for CpuUsageImpl {
                         log::error!("Failed to read cpu info: {}", e);
                     }
                     Ok(cpu_info) => {
-                        if prev_cpu_info.len() != cpu_info.len() {
-                            prev_cpu_info = cpu_info;
-                        } else if cpu_info.len() > 0 {
+                        if prev_cpu_info.len() == cpu_info.len() && cpu_info.len() > 0 {
                             let mut tooltip_text = String::new();
                             for i in 0..cpu_info.len() {
                                 // Let's start with just the CPU total before supporting per core
@@ -149,20 +146,28 @@ impl ObjectImpl for CpuUsageImpl {
                                             return;
                                         }
                                     };
+                                    if cfg!(debug_assertions) {
+                                        tooltip_text.push_str(&format!("Prev Total: {}\nNew Total: {}\nPrev Idle: {}\nNew Idle: {}\n", prev_cpu_info[i].total_time(), cpu_info[i].total_time(), prev_cpu_info[i].total_idle_time(), cpu_info[i].total_idle_time()));
+                                    }
                                     tooltip_text.push_str(&format!("Total: {}%", usage_percentage));
                                 } else {
                                     tooltip_text
                                         .push_str(&format!("\nCore {}: {}%", i, usage_percentage));
                                 }
                             }
+                            if cfg!(debug_assertions) {
+                                tooltip_text.push_str(&format!("\nID: {}", random_id));
+                            }
                             match popup_label_ref.upgrade() {
                                 Some(label) => label.set_text(&tooltip_text),
                                 None => {
-                                    log::trace!("Popup label upgrade failed");
+                                    log::trace!("Popup label upgrade failed: {}", random_id);
                                     return;
                                 }
                             };
                         }
+
+                        prev_cpu_info = cpu_info;
                     }
                 };
                 sleep(Duration::from_secs(1)).await;
@@ -187,7 +192,7 @@ impl ObjectImpl for CpuUsageImpl {
         self.obj().add_controller(event_controller);
         // Unparent to avoid the warning about a destroyed widget having children.
         self.obj().connect_destroy(move |_| {
-            log::trace!("CPU Usage destroy");
+            log::trace!("CPU Usage destroy: {}", random_id);
             popup.unparent();
         });
     }
