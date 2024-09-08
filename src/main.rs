@@ -99,6 +99,7 @@ fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> Applicat
 
             let right_box = gtk::Box::new(Orientation::Horizontal, 8);
             right_box.append(&widgets::cpu_usage::CpuUsage::new());
+            right_box.append(&widgets::ram_usage::RamUsage::new());
 
             let hbox = gtk::CenterBox::new();
             hbox.set_start_widget(Some(&left_box));
