@@ -2,6 +2,7 @@ use async_std::sync::{Arc, Mutex, Weak};
 use gio::DesktopAppInfo;
 use log::trace;
 
+#[allow(dead_code)]
 struct XdgApplication {
     name: String,
     file_path: String,
@@ -9,6 +10,7 @@ struct XdgApplication {
     exec: String,
 }
 
+#[allow(dead_code)]
 pub struct XdgApplicationsCache {
     applications: Vec<XdgApplication>,
 }

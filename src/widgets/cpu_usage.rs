@@ -17,6 +17,7 @@ use gtk4::{
 };
 use gtk4::{prelude::*, Label};
 
+#[allow(dead_code)]
 struct CpuStat {
     name: String,
     user: i64,
@@ -61,6 +62,7 @@ impl CpuStat {
         self.system + self.irq + self.softirq
     }
 
+    #[allow(dead_code)]
     fn virtual_time(&self) -> i64 {
         self.guest + self.guest_nice
     }
@@ -71,6 +73,7 @@ impl CpuStat {
     }
 }
 
+#[allow(dead_code)]
 struct CpuStatDiff {
     total: i64,
     idle: i64,

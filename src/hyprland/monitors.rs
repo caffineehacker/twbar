@@ -10,6 +10,7 @@ use super::{
     events::{HyprlandEvent, HyprlandEvents, LatestEventValue, LatestEventValueListener},
 };
 
+#[allow(dead_code)]
 #[derive(Clone, Default, Deserialize)]
 pub struct HyprlandMonitor {
     pub id: i32,
@@ -44,6 +45,7 @@ pub struct HyprlandMonitor {
     pub available_modes: Vec<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Default, Deserialize)]
 pub struct MonitorWorkspace {
     pub id: u32,

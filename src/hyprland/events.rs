@@ -312,6 +312,7 @@ impl EventData for MoveWindowV2 {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct ChangeFloatingMode {
     window_address: String,
@@ -331,12 +332,14 @@ impl EventData for ChangeFloatingMode {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Minimize {
     window_address: String,
     is_minimized: bool,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Screencast {
     state: bool,
@@ -344,6 +347,7 @@ pub struct Screencast {
     owner: bool,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct WindowTitleV2 {
     address: String,
@@ -363,12 +367,14 @@ impl EventData for WindowTitleV2 {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct ToggleGroup {
     state: bool,
     window_addresses: Vec<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Pin {
     window_address: String,

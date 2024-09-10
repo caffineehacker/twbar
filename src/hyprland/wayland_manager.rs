@@ -31,6 +31,7 @@ use wayland_protocols_wlr::{
     },
 };
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub enum WaylandWindowEvent {
     NewWindowExt(ExtForeignToplevel),
@@ -41,11 +42,13 @@ pub enum WaylandWindowEvent {
     RemovedWindowWlr(ZWlrForeignTopLevel),
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub enum OutputEvent {
     OutputsUpdated(Vec<Output>),
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Default)]
 pub struct Output {
     pub wl_output_id: u32,
@@ -64,6 +67,7 @@ pub struct Output {
     pub adaptive_sync: bool,
 }
 
+#[allow(dead_code)]
 pub struct WaylandManager {
     window_event_receiver: InactiveReceiver<WaylandWindowEvent>,
     windows_state: Arc<RwLock<WaylandWindowsState>>,
@@ -176,6 +180,7 @@ impl ExtForeignToplevel {
 }
 
 // Represents a window from the ZWlrForeignTopLevel protocol
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct ZWlrForeignTopLevel {
     // Raw wayland proxy ID

@@ -12,7 +12,7 @@ use super::{
     events::{
         EventData, HyprlandEvent, HyprlandEvents, LatestEventValue, LatestEventValueListener,
     },
-    wayland_manager::{ExtForeignToplevel, WaylandManager},
+    wayland_manager::ExtForeignToplevel,
 };
 
 #[derive(Deserialize, Clone, Default, Debug, PartialEq, Eq)]
