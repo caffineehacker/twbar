@@ -1,10 +1,13 @@
+use std::sync::LazyLock;
 use std::time::Duration;
 use std::{io::Error, str::FromStr};
 
-use async_std::task::sleep;
+use async_std::sync::{Arc, Mutex};
+use async_std::task::{self, sleep};
 use async_std::{fs::File, io::ReadExt};
 
-use gio::glib::{clone, random_int};
+use futures::FutureExt as OtherFutureExt;
+use gio::glib::{clone, random_int, WeakRef};
 use gio::prelude::*;
 use gtk4::glib::Object;
 use gtk4::subclass::prelude::*;
@@ -68,16 +71,129 @@ impl CpuStat {
     }
 }
 
-async fn read_cpu_info() -> Result<Vec<CpuStat>, Error> {
-    let mut stat = File::open("/proc/stat").await?;
-    let mut buf: String = String::default();
-    stat.read_to_string(&mut buf).await?;
-    Ok(buf
-        .lines()
-        .take_while(|line| line.starts_with("cpu"))
-        .map(|line| CpuStat::from_proc_stat_line(line).unwrap())
-        .collect::<Vec<CpuStat>>())
+struct CpuStatDiff {
+    total: i64,
+    idle: i64,
+    percent_usage: i64,
 }
+
+trait Callback: Send {
+    fn call(&mut self, diffs: &Vec<CpuStatDiff>);
+}
+
+struct CpuStatMonitor {
+    callbacks: Arc<Mutex<Vec<(u32, Box<dyn Callback>)>>>,
+}
+
+impl CpuStatMonitor {
+    pub fn new() -> Self {
+        let callbacks: Arc<Mutex<Vec<(u32, Box<dyn Callback>)>>> = Arc::new(Mutex::new(Vec::new()));
+        let callbacks_ref = Arc::downgrade(&callbacks);
+        task::spawn(async move {
+            let mut prev_cpu_info: Vec<CpuStat> = Vec::new();
+            loop {
+                let cpu_info = Self::read_cpu_info().await;
+                match cpu_info {
+                    Err(e) => {
+                        log::error!("Failed to read cpu info: {}", e);
+                    }
+                    Ok(cpu_info) => {
+                        if prev_cpu_info.len() == cpu_info.len() && cpu_info.len() > 0 {
+                            let diffs = prev_cpu_info
+                                .iter()
+                                .zip(cpu_info.iter())
+                                .map(|(prev, current)| {
+                                    let total = current.total_time() - prev.total_time();
+                                    let idle = current.total_idle_time() - prev.total_idle_time();
+                                    CpuStatDiff {
+                                        total,
+                                        idle,
+                                        percent_usage: ((total - idle) * 100) / total.max(1),
+                                    }
+                                })
+                                .collect();
+
+                            match callbacks_ref.upgrade() {
+                                Some(callbacks) => {
+                                    glib::idle_add_once(move || {
+                                        let mut callbacks = callbacks.lock().boxed();
+
+                                        loop {
+                                            match (&mut callbacks).now_or_never() {
+                                                Some(mut callbacks) => {
+                                                    callbacks.iter_mut().for_each(
+                                                        |(_id, callback)| {
+                                                            callback.as_mut().call(&diffs)
+                                                        },
+                                                    );
+                                                    break;
+                                                }
+                                                None => {}
+                                            }
+                                        }
+                                    });
+                                }
+                                _ => log::error!(
+                                    "Failed to upgrade callbacks, this should not happen"
+                                ),
+                            }
+                        }
+
+                        prev_cpu_info = cpu_info;
+                    }
+                };
+                sleep(Duration::from_secs(1)).await;
+            }
+        });
+
+        Self { callbacks }
+    }
+
+    pub fn add_callback(&self, callback: Box<dyn Callback>) -> u32 {
+        let callback_id = random_int();
+        let callbacks = self.callbacks.clone();
+        task::block_on(async move { callbacks.lock().await.push((callback_id, callback)) });
+
+        callback_id
+    }
+
+    pub fn remove_callback(&self, callback_id: u32) {
+        task::block_on(async move {
+            let mut callbacks = self.callbacks.lock().await;
+            let index_to_remove = callbacks.iter().enumerate().find_map(|(i, (cid, _c))| {
+                if *cid == callback_id {
+                    Some(i)
+                } else {
+                    None
+                }
+            });
+
+            match index_to_remove {
+                Some(index) => {
+                    callbacks.remove(index);
+                }
+                _ => log::error!(
+                    "Failed to find callback to remove. Looking for id {}",
+                    callback_id
+                ),
+            };
+        });
+    }
+
+    async fn read_cpu_info() -> Result<Vec<CpuStat>, Error> {
+        let mut stat = File::open("/proc/stat").await?;
+        let mut buf: String = String::default();
+        stat.read_to_string(&mut buf).await?;
+        Ok(buf
+            .lines()
+            .take_while(|line| line.starts_with("cpu"))
+            .map(|line| CpuStat::from_proc_stat_line(line).unwrap())
+            .collect::<Vec<CpuStat>>())
+    }
+}
+
+// Because of this, once initialized we never stop the process of reading the CPU stats. This is probably OK since this is for a widget which is likely either always shown or never shown.
+static MONITOR_INSTANCE: LazyLock<CpuStatMonitor> = LazyLock::new(|| CpuStatMonitor::new());
 
 // Object holding the state
 #[derive(Default)]
@@ -116,63 +232,50 @@ impl ObjectImpl for CpuUsageImpl {
 
         let popup_label_ref = popup_label.downgrade();
 
-        glib::spawn_future_local(async move {
-            let mut prev_cpu_info: Vec<CpuStat> = Vec::new();
-            loop {
-                let cpu_info = read_cpu_info().await;
-                match cpu_info {
-                    Err(e) => {
-                        log::error!("Failed to read cpu info: {}", e);
+        let monitor = &MONITOR_INSTANCE;
+
+        struct CallbackStruct {
+            label_ref: WeakRef<Label>,
+            popup_label_ref: WeakRef<Label>,
+        }
+        // This is OK since the callback will always be on the UI thread
+        unsafe impl Send for CallbackStruct {}
+        impl Callback for CallbackStruct {
+            fn call(&mut self, diffs: &Vec<CpuStatDiff>) {
+                let mut tooltip_text = "".to_owned();
+                for i in 0..diffs.len() {
+                    if i == 0 {
+                        match self.label_ref.upgrade() {
+                            Some(label) => {
+                                label.set_text(&format!("   {}%", diffs[i].percent_usage))
+                            }
+                            None => {
+                                log::trace!("Label ref upgrade failed");
+                                return;
+                            }
+                        };
+                        tooltip_text.push_str(&format!("Total: {}%", diffs[i].percent_usage));
+                    } else {
+                        tooltip_text
+                            .push_str(&format!("\nCore {}: {}%", i, diffs[i].percent_usage));
                     }
-                    Ok(cpu_info) => {
-                        if prev_cpu_info.len() == cpu_info.len() && cpu_info.len() > 0 {
-                            let mut tooltip_text = String::new();
-                            for i in 0..cpu_info.len() {
-                                // Let's start with just the CPU total before supporting per core
-                                let total_diff =
-                                    cpu_info[i].total_time() - prev_cpu_info[i].total_time();
-                                let idle_diff = cpu_info[i].total_idle_time()
-                                    - prev_cpu_info[i].total_idle_time();
-                                let usage_percentage =
-                                    ((total_diff - idle_diff) * 100) / total_diff.max(1);
-
-                                if i == 0 {
-                                    match label_ref.upgrade() {
-                                        Some(label) => {
-                                            label.set_text(&format!("   {}%", usage_percentage))
-                                        }
-                                        None => {
-                                            log::trace!("Label ref upgrade failed");
-                                            return;
-                                        }
-                                    };
-                                    if cfg!(debug_assertions) {
-                                        tooltip_text.push_str(&format!("Prev Total: {}\nNew Total: {}\nPrev Idle: {}\nNew Idle: {}\n", prev_cpu_info[i].total_time(), cpu_info[i].total_time(), prev_cpu_info[i].total_idle_time(), cpu_info[i].total_idle_time()));
-                                    }
-                                    tooltip_text.push_str(&format!("Total: {}%", usage_percentage));
-                                } else {
-                                    tooltip_text
-                                        .push_str(&format!("\nCore {}: {}%", i, usage_percentage));
-                                }
-                            }
-                            if cfg!(debug_assertions) {
-                                tooltip_text.push_str(&format!("\nID: {}", random_id));
-                            }
-                            match popup_label_ref.upgrade() {
-                                Some(label) => label.set_text(&tooltip_text),
-                                None => {
-                                    log::trace!("Popup label upgrade failed: {}", random_id);
-                                    return;
-                                }
-                            };
-                        }
-
-                        prev_cpu_info = cpu_info;
+                }
+                match self.popup_label_ref.upgrade() {
+                    Some(label) => label.set_text(&tooltip_text),
+                    None => {
+                        log::trace!("Popup label upgrade failed");
+                        return;
                     }
                 };
-                sleep(Duration::from_secs(1)).await;
             }
-        });
+        }
+
+        let callback = CallbackStruct {
+            label_ref,
+            popup_label_ref,
+        };
+
+        let callback_id = monitor.add_callback(Box::new(callback));
 
         let event_controller = EventControllerMotion::new();
         event_controller.connect_enter(clone!(
@@ -194,6 +297,7 @@ impl ObjectImpl for CpuUsageImpl {
         self.obj().connect_destroy(move |_| {
             log::trace!("CPU Usage destroy: {}", random_id);
             popup.unparent();
+            monitor.remove_callback(callback_id);
         });
     }
 }
