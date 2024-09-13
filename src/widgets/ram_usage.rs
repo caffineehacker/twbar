@@ -1,11 +1,13 @@
+use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::io::Error;
 use std::time::Duration;
 
-use async_std::task::sleep;
+use async_std::sync::{Arc, Mutex, Weak};
+use async_std::task::{self, sleep};
 use async_std::{fs::File, io::ReadExt};
 
-use gio::glib::clone;
+use gio::glib::{clone, SendWeakRef, WeakRef};
 use gio::prelude::*;
 use gtk4::glib::Object;
 use gtk4::subclass::prelude::*;
@@ -15,32 +17,126 @@ use gtk4::{
 };
 use gtk4::{prelude::*, Label};
 
-async fn read_memory_info() -> Result<HashMap<String, i64>, Error> {
-    let mut stat = File::open("/proc/meminfo").await?;
-    let mut buf: String = String::default();
-    stat.read_to_string(&mut buf).await?;
-    Ok(buf
-        .lines()
-        .map(|line| line.split_once(":").unwrap())
-        .map(|(k, v)| {
-            (
-                k.to_owned(),
-                v.trim()
-                    .split_ascii_whitespace()
-                    .next()
-                    .unwrap()
-                    .parse::<i64>()
-                    .unwrap(),
-            )
-        })
-        .collect::<HashMap<String, i64>>())
+struct RamInfo {
+    controls: Mutex<Vec<SendWeakRef<RamUsage>>>,
+}
+
+impl RamInfo {
+    pub async fn instance() -> Arc<Self> {
+        static INSTANCE: Mutex<Weak<RamInfo>> = Mutex::new(Weak::new());
+
+        let mut mutex_guard = INSTANCE.lock().await;
+        match mutex_guard.upgrade() {
+            Some(instance) => instance,
+            None => {
+                let instance = Self::new();
+                *mutex_guard = Arc::downgrade(&instance);
+                instance
+            }
+        }
+    }
+
+    fn new() -> Arc<Self> {
+        let instance = Arc::new(Self {
+            controls: Mutex::new(Vec::new()),
+        });
+
+        let me = instance.clone();
+        glib::spawn_future_local(async move {
+            loop {
+                let mem_info = Self::read_memory_info().await;
+                match mem_info {
+                    Err(e) => {
+                        log::error!("Failed to read mem info: {}", e);
+                    }
+                    Ok(mem_info) => {
+                        // MemAvailable is effectively mem free
+                        let memfree = mem_info.get("MemAvailable").cloned().unwrap_or(0);
+                        let memtotal = mem_info.get("MemTotal").cloned().unwrap_or(0);
+                        let memused = memtotal - memfree;
+                        let memused_percent = (memused as f64) / (memtotal as f64).max(1.0);
+
+                        let controls = me.controls.lock().await;
+
+                        for control in controls.iter() {
+                            match control.upgrade() {
+                                Some(control) => {
+                                    control.imp().update_labels(
+                                        &format!(
+                                            "   {}%",
+                                            (memused_percent * 100.0).round() as i64
+                                        ),
+                                        &format!(
+                                            "Total: {:.2} GB\nUsed: {:.2} GB",
+                                            (memtotal as f64) / (1024.0 * 1024.0),
+                                            (memused as f64) / (1024.0 * 1024.0)
+                                        ),
+                                    );
+                                }
+                                None => {}
+                            }
+                        }
+                    }
+                };
+                sleep(Duration::from_secs(1)).await;
+            }
+        });
+
+        instance
+    }
+
+    pub async fn register_control(&self, control: SendWeakRef<RamUsage>) {
+        self.controls.lock().await.push(control);
+    }
+
+    async fn read_memory_info() -> Result<HashMap<String, i64>, Error> {
+        let mut stat = File::open("/proc/meminfo").await?;
+        let mut buf: String = String::default();
+        stat.read_to_string(&mut buf).await?;
+        Ok(buf
+            .lines()
+            .map(|line| line.split_once(":").unwrap())
+            .map(|(k, v)| {
+                (
+                    k.to_owned(),
+                    v.trim()
+                        .split_ascii_whitespace()
+                        .next()
+                        .unwrap()
+                        .parse::<i64>()
+                        .unwrap(),
+                )
+            })
+            .collect::<HashMap<String, i64>>())
+    }
 }
 
 // Object holding the state
 #[derive(Default)]
-pub struct RamUsageImpl {}
+pub struct RamUsageImpl {
+    label_ref: OnceCell<WeakRef<Label>>,
+    popup_label_ref: OnceCell<WeakRef<Label>>,
+}
 
-impl RamUsageImpl {}
+impl RamUsageImpl {
+    pub fn update_labels(&self, text: &str, popup_text: &str) {
+        match self.label_ref.get().and_then(|l| l.upgrade()) {
+            Some(label) => label.set_text(text),
+            None => {
+                log::trace!("Label ref upgrade failed");
+                return;
+            }
+        };
+
+        match self.popup_label_ref.get().and_then(|l| l.upgrade()) {
+            Some(label) => label.set_text(popup_text),
+            None => {
+                log::trace!("Popup label upgrade failed");
+                return;
+            }
+        };
+    }
+}
 
 // The central trait for subclassing a GObject
 #[glib::object_subclass]
@@ -59,7 +155,7 @@ impl ObjectImpl for RamUsageImpl {
         let label = Label::new(Some(""));
         self.obj().append(&label);
 
-        let label_ref = label.downgrade();
+        self.label_ref.set(label.downgrade()).unwrap();
 
         let popup_label = Label::new(Some(""));
         let popup = Popover::new();
@@ -69,48 +165,11 @@ impl ObjectImpl for RamUsageImpl {
         popup.set_focusable(false);
         popup.set_can_focus(false);
 
-        let popup_label_ref = popup_label.downgrade();
+        self.popup_label_ref.set(popup_label.downgrade()).unwrap();
 
-        glib::spawn_future_local(async move {
-            loop {
-                let mem_info = read_memory_info().await;
-                match mem_info {
-                    Err(e) => {
-                        log::error!("Failed to read mem info: {}", e);
-                    }
-                    Ok(mem_info) => {
-                        // MemAvailable is effectively mem free
-                        let memfree = mem_info.get("MemAvailable").cloned().unwrap_or(0);
-                        let memtotal = mem_info.get("MemTotal").cloned().unwrap_or(0);
-                        let memused = memtotal - memfree;
-                        let memused_percent = (memused as f64) / (memtotal as f64).max(1.0);
-
-                        match label_ref.upgrade() {
-                            Some(label) => label.set_text(&format!(
-                                "   {}%",
-                                (memused_percent * 100.0).round() as i64
-                            )),
-                            None => {
-                                log::trace!("Label ref upgrade failed");
-                                return;
-                            }
-                        };
-
-                        match popup_label_ref.upgrade() {
-                            Some(label) => label.set_text(&format!(
-                                "Total: {:.2} GB\nUsed: {:.2} GB",
-                                (memtotal as f64) / (1024.0 * 1024.0),
-                                (memused as f64) / (1024.0 * 1024.0)
-                            )),
-                            None => {
-                                log::trace!("Popup label upgrade failed");
-                                return;
-                            }
-                        };
-                    }
-                };
-                sleep(Duration::from_secs(1)).await;
-            }
+        let weak_me: SendWeakRef<RamUsage> = self.obj().downgrade().into();
+        task::block_on(async move {
+            RamInfo::instance().await.register_control(weak_me).await;
         });
 
         let event_controller = EventControllerMotion::new();
