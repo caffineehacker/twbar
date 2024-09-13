@@ -1,4 +1,7 @@
-use std::sync::{Arc, Weak};
+use std::{
+    error::Error,
+    sync::{Arc, Weak},
+};
 
 use async_std::{sync::Mutex, task};
 use gdk4_wayland::{WaylandDisplay, WaylandMonitor};
@@ -56,7 +59,7 @@ impl GtkOutputs {
         }
     }
 
-    pub async fn get_name(&self, monitor: &Monitor) -> String {
+    pub async fn get_name(&self, monitor: &Monitor) -> Result<String, Box<dyn Error>> {
         let (name_sender, mut name_receiver) = async_broadcast::broadcast(1);
 
         let wayland_monitor: &WaylandMonitor = monitor.dynamic_cast_ref().unwrap();
@@ -67,9 +70,9 @@ impl GtkOutputs {
             name_sender,
         );
 
-        queue.roundtrip(&mut GtkOutputsQueue {}).unwrap();
+        queue.roundtrip(&mut GtkOutputsQueue {})?;
 
-        name_receiver.recv_direct().await.unwrap()
+        Ok(name_receiver.recv_direct().await?)
     }
 }
 

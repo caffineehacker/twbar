@@ -177,22 +177,26 @@ fn activate(app: &Application) {
                             trace!("Monitors changed");
                             let mut windows = windows.borrow_mut();
                             let monitor_names = (0..monitors.n_items())
-                                .map(|index| {
+                                .filter_map(|index| {
                                     let gdk_monitor = monitors.item(index).unwrap();
                                     let gdk_monitor: &Monitor =
                                         gdk_monitor.dynamic_cast_ref().unwrap();
                                     if let Some(gdk_connector) =
                                         gdk_monitor.connector().map(|c| c.as_str().to_owned())
                                     {
-                                        (gdk_monitor.clone(), gdk_connector)
+                                        Some((gdk_monitor.clone(), gdk_connector))
                                     } else {
                                         let gtk_outputs = gtk_outputs.clone();
-                                        (
+                                        let output_name = task::block_on(async move {
+                                            gtk_outputs.get_name(gdk_monitor).await
+                                        });
+                                        if output_name.is_err() {
+                                            return None;
+                                        }
+                                        Some((
                                             gdk_monitor.clone(),
-                                            task::block_on(async move {
-                                                gtk_outputs.get_name(gdk_monitor).await
-                                            }),
-                                        )
+                                            output_name.unwrap(),
+                                        ))
                                     }
                                 })
                                 .collect::<Vec<(Monitor, String)>>();
