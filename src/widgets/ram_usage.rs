@@ -56,9 +56,9 @@ impl RamInfo {
                         let memused = memtotal - memfree;
                         let memused_percent = (memused as f64) / (memtotal as f64).max(1.0);
 
-                        let controls = me.controls.lock().await;
+                        let mut controls = me.controls.lock().await;
 
-                        for control in controls.iter() {
+                        for (index, control) in controls.clone().iter().enumerate().rev() {
                             match control.upgrade() {
                                 Some(control) => {
                                     control.imp().update_labels(
@@ -73,7 +73,9 @@ impl RamInfo {
                                         ),
                                     );
                                 }
-                                None => {}
+                                None => {
+                                    controls.remove(index);
+                                }
                             }
                         }
                     }

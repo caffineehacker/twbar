@@ -1,13 +1,13 @@
-use std::sync::LazyLock;
+use std::cell::OnceCell;
+use std::sync::Arc;
 use std::time::Duration;
 use std::{io::Error, str::FromStr};
 
-use async_std::sync::{Arc, Mutex};
+use async_std::sync::{Mutex, Weak};
 use async_std::task::{self, sleep};
 use async_std::{fs::File, io::ReadExt};
 
-use futures::FutureExt as OtherFutureExt;
-use gio::glib::{clone, random_int, WeakRef};
+use gio::glib::{clone, random_int, SendWeakRef, WeakRef};
 use gio::prelude::*;
 use gtk4::glib::Object;
 use gtk4::subclass::prelude::*;
@@ -80,19 +80,32 @@ struct CpuStatDiff {
     percent_usage: i64,
 }
 
-trait Callback: Send {
-    fn call(&mut self, diffs: &Vec<CpuStatDiff>);
-}
-
 struct CpuStatMonitor {
-    callbacks: Arc<Mutex<Vec<(u32, Box<dyn Callback>)>>>,
+    controls: Mutex<Vec<SendWeakRef<CpuUsage>>>,
 }
 
 impl CpuStatMonitor {
-    pub fn new() -> Self {
-        let callbacks: Arc<Mutex<Vec<(u32, Box<dyn Callback>)>>> = Arc::new(Mutex::new(Vec::new()));
-        let callbacks_ref = Arc::downgrade(&callbacks);
-        task::spawn(async move {
+    pub async fn instance() -> Arc<Self> {
+        static INSTANCE: Mutex<Weak<CpuStatMonitor>> = Mutex::new(Weak::new());
+
+        let mut mutex_guard = INSTANCE.lock().await;
+        match mutex_guard.upgrade() {
+            Some(instance) => instance,
+            None => {
+                let instance = Self::new();
+                *mutex_guard = Arc::downgrade(&instance);
+                instance
+            }
+        }
+    }
+
+    fn new() -> Arc<Self> {
+        let instance = Arc::new(Self {
+            controls: Mutex::new(Vec::new()),
+        });
+
+        let me = instance.clone();
+        glib::spawn_future_local(async move {
             let mut prev_cpu_info: Vec<CpuStat> = Vec::new();
             loop {
                 let cpu_info = Self::read_cpu_info().await;
@@ -102,7 +115,7 @@ impl CpuStatMonitor {
                     }
                     Ok(cpu_info) => {
                         if prev_cpu_info.len() == cpu_info.len() && cpu_info.len() > 0 {
-                            let diffs = prev_cpu_info
+                            let diffs: Vec<CpuStatDiff> = prev_cpu_info
                                 .iter()
                                 .zip(cpu_info.iter())
                                 .map(|(prev, current)| {
@@ -116,29 +129,34 @@ impl CpuStatMonitor {
                                 })
                                 .collect();
 
-                            match callbacks_ref.upgrade() {
-                                Some(callbacks) => {
-                                    glib::idle_add_once(move || {
-                                        let mut callbacks = callbacks.lock().boxed();
-
-                                        loop {
-                                            match (&mut callbacks).now_or_never() {
-                                                Some(mut callbacks) => {
-                                                    callbacks.iter_mut().for_each(
-                                                        |(_id, callback)| {
-                                                            callback.as_mut().call(&diffs)
-                                                        },
-                                                    );
-                                                    break;
-                                                }
-                                                None => {}
-                                            }
-                                        }
-                                    });
+                            let mut tooltip_text = "".to_owned();
+                            let label_text = if diffs.len() > 0 {
+                                format!("   {}%", diffs[0].percent_usage)
+                            } else {
+                                "No diffs".to_owned()
+                            };
+                            for i in 0..diffs.len() {
+                                if i == 0 {
+                                    tooltip_text
+                                        .push_str(&format!("Total: {}%", diffs[i].percent_usage));
+                                } else {
+                                    tooltip_text.push_str(&format!(
+                                        "\nCore {}: {}%",
+                                        i, diffs[i].percent_usage
+                                    ));
                                 }
-                                _ => log::error!(
-                                    "Failed to upgrade callbacks, this should not happen"
-                                ),
+                            }
+
+                            let mut controls = me.controls.lock().await;
+                            for (index, control) in controls.clone().iter().enumerate().rev() {
+                                match control.upgrade() {
+                                    Some(control) => {
+                                        control.imp().update(&label_text, &tooltip_text);
+                                    }
+                                    None => {
+                                        controls.remove(index);
+                                    }
+                                }
                             }
                         }
 
@@ -149,38 +167,11 @@ impl CpuStatMonitor {
             }
         });
 
-        Self { callbacks }
+        instance
     }
 
-    pub fn add_callback(&self, callback: Box<dyn Callback>) -> u32 {
-        let callback_id = random_int();
-        let callbacks = self.callbacks.clone();
-        task::block_on(async move { callbacks.lock().await.push((callback_id, callback)) });
-
-        callback_id
-    }
-
-    pub fn remove_callback(&self, callback_id: u32) {
-        task::block_on(async move {
-            let mut callbacks = self.callbacks.lock().await;
-            let index_to_remove = callbacks.iter().enumerate().find_map(|(i, (cid, _c))| {
-                if *cid == callback_id {
-                    Some(i)
-                } else {
-                    None
-                }
-            });
-
-            match index_to_remove {
-                Some(index) => {
-                    callbacks.remove(index);
-                }
-                _ => log::error!(
-                    "Failed to find callback to remove. Looking for id {}",
-                    callback_id
-                ),
-            };
-        });
+    pub async fn register_control(&self, control: SendWeakRef<CpuUsage>) {
+        self.controls.lock().await.push(control);
     }
 
     async fn read_cpu_info() -> Result<Vec<CpuStat>, Error> {
@@ -195,14 +186,32 @@ impl CpuStatMonitor {
     }
 }
 
-// Because of this, once initialized we never stop the process of reading the CPU stats. This is probably OK since this is for a widget which is likely either always shown or never shown.
-static MONITOR_INSTANCE: LazyLock<CpuStatMonitor> = LazyLock::new(|| CpuStatMonitor::new());
-
 // Object holding the state
 #[derive(Default)]
-pub struct CpuUsageImpl {}
+pub struct CpuUsageImpl {
+    label_ref: OnceCell<WeakRef<Label>>,
+    popup_label_ref: OnceCell<WeakRef<Label>>,
+}
 
-impl CpuUsageImpl {}
+impl CpuUsageImpl {
+    fn update(&self, text: &str, popup_text: &str) {
+        match self.label_ref.get().and_then(|l| l.upgrade()) {
+            Some(label) => label.set_text(text),
+            None => {
+                log::trace!("Label ref upgrade failed");
+                return;
+            }
+        };
+
+        match self.popup_label_ref.get().and_then(|l| l.upgrade()) {
+            Some(label) => label.set_text(popup_text),
+            None => {
+                log::trace!("Popup label upgrade failed");
+                return;
+            }
+        };
+    }
+}
 
 // The central trait for subclassing a GObject
 #[glib::object_subclass]
@@ -235,50 +244,16 @@ impl ObjectImpl for CpuUsageImpl {
 
         let popup_label_ref = popup_label.downgrade();
 
-        let monitor = &MONITOR_INSTANCE;
+        self.label_ref.set(label_ref).unwrap();
+        self.popup_label_ref.set(popup_label_ref).unwrap();
 
-        struct CallbackStruct {
-            label_ref: WeakRef<Label>,
-            popup_label_ref: WeakRef<Label>,
-        }
-        // This is OK since the callback will always be on the UI thread
-        unsafe impl Send for CallbackStruct {}
-        impl Callback for CallbackStruct {
-            fn call(&mut self, diffs: &Vec<CpuStatDiff>) {
-                let mut tooltip_text = "".to_owned();
-                for i in 0..diffs.len() {
-                    if i == 0 {
-                        match self.label_ref.upgrade() {
-                            Some(label) => {
-                                label.set_text(&format!("   {}%", diffs[i].percent_usage))
-                            }
-                            None => {
-                                log::trace!("Label ref upgrade failed");
-                                return;
-                            }
-                        };
-                        tooltip_text.push_str(&format!("Total: {}%", diffs[i].percent_usage));
-                    } else {
-                        tooltip_text
-                            .push_str(&format!("\nCore {}: {}%", i, diffs[i].percent_usage));
-                    }
-                }
-                match self.popup_label_ref.upgrade() {
-                    Some(label) => label.set_text(&tooltip_text),
-                    None => {
-                        log::trace!("Popup label upgrade failed");
-                        return;
-                    }
-                };
-            }
-        }
-
-        let callback = CallbackStruct {
-            label_ref,
-            popup_label_ref,
-        };
-
-        let callback_id = monitor.add_callback(Box::new(callback));
+        let weak_me = SendWeakRef::from(self.obj().downgrade());
+        task::block_on(async move {
+            CpuStatMonitor::instance()
+                .await
+                .register_control(weak_me)
+                .await;
+        });
 
         let event_controller = EventControllerMotion::new();
         event_controller.connect_enter(clone!(
@@ -300,7 +275,6 @@ impl ObjectImpl for CpuUsageImpl {
         self.obj().connect_destroy(move |_| {
             log::trace!("CPU Usage destroy: {}", random_id);
             popup.unparent();
-            monitor.remove_callback(callback_id);
         });
     }
 }
