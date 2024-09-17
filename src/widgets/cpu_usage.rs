@@ -7,7 +7,7 @@ use async_std::sync::{Mutex, Weak};
 use async_std::task::{self, sleep};
 use async_std::{fs::File, io::ReadExt};
 
-use gio::glib::{clone, random_int, SendWeakRef, WeakRef};
+use gio::glib::{clone, SendWeakRef, WeakRef};
 use gio::prelude::*;
 use gtk4::glib::Object;
 use gtk4::subclass::prelude::*;
@@ -240,8 +240,6 @@ impl ObjectImpl for CpuUsageImpl {
         popup.set_focusable(false);
         popup.set_can_focus(false);
 
-        let random_id = random_int();
-
         let popup_label_ref = popup_label.downgrade();
 
         self.label_ref.set(label_ref).unwrap();
@@ -273,7 +271,6 @@ impl ObjectImpl for CpuUsageImpl {
         self.obj().add_controller(event_controller);
         // Unparent to avoid the warning about a destroyed widget having children.
         self.obj().connect_destroy(move |_| {
-            log::trace!("CPU Usage destroy: {}", random_id);
             popup.unparent();
         });
     }
