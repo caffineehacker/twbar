@@ -2,7 +2,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use async_std::task;
 use glib::clone;
 use gtk4::gdk::{Display, Monitor};
 use gtk4::prelude::DisplayExt;
@@ -100,6 +99,7 @@ fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> Applicat
             let right_box = gtk::Box::new(Orientation::Horizontal, 8);
             right_box.append(&widgets::cpu_usage::CpuUsage::new());
             right_box.append(&widgets::ram_usage::RamUsage::new());
+            right_box.append(&widgets::battery_info::BatteryInfo::new());
 
             let hbox = gtk::CenterBox::new();
             hbox.set_start_widget(Some(&left_box));
@@ -176,29 +176,30 @@ fn activate(app: &Application) {
                         async move {
                             trace!("Monitors changed");
                             let mut windows = windows.borrow_mut();
-                            let monitor_names = (0..monitors.n_items())
-                                .filter_map(|index| {
+                            let monitor_names = futures::future::join_all((0..monitors.n_items())
+                                .map(|index| {
                                     let gdk_monitor = monitors.item(index).unwrap();
-                                    let gdk_monitor: &Monitor =
-                                        gdk_monitor.dynamic_cast_ref().unwrap();
-                                    if let Some(gdk_connector) =
-                                        gdk_monitor.connector().map(|c| c.as_str().to_owned())
-                                    {
-                                        Some((gdk_monitor.clone(), gdk_connector))
-                                    } else {
-                                        let gtk_outputs = gtk_outputs.clone();
-                                        let output_name = task::block_on(async move {
-                                            gtk_outputs.get_name(gdk_monitor).await
-                                        });
-                                        if output_name.is_err() {
-                                            return None;
+                                    let gdk_monitor: Monitor =
+                                        gdk_monitor.dynamic_cast().unwrap();
+                                    let gtk_outputs = gtk_outputs.clone();
+                                    async move {
+                                        if let Some(gdk_connector) =
+                                            gdk_monitor.connector().map(|c| c.as_str().to_owned())
+                                        {
+                                            Some((gdk_monitor.clone(), gdk_connector))
+                                        } else {
+                                            let output_name = gtk_outputs.get_name(&gdk_monitor).await;
+                                            if output_name.is_err() {
+                                                return None;
+                                            }
+                                            Some((
+                                                gdk_monitor.clone(),
+                                                output_name.unwrap(),
+                                            ))
                                         }
-                                        Some((
-                                            gdk_monitor.clone(),
-                                            output_name.unwrap(),
-                                        ))
                                     }
-                                })
+                                })).await.into_iter()
+                                .filter_map(|x| x)
                                 .collect::<Vec<(Monitor, String)>>();
                             // First remove any windows that are not in the new list
                             'windows_loop: for (connector, window) in windows.clone().iter() {

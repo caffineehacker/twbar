@@ -35,6 +35,7 @@
             gtk4
             gtk4-layer-shell
             vscodium
+            udev
           ];
 
           nativeBuildInputs = [
