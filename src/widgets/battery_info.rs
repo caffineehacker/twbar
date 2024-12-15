@@ -22,6 +22,7 @@ use gtk4::{
     Widget,
 };
 use gtk4::{prelude::*, Label};
+use log::trace;
 use mio::unix::SourceFd;
 use mio::{Events, Interest, Poll, Token};
 use udev::{Device, Enumerator, MonitorBuilder};
@@ -41,6 +42,7 @@ impl BatteryData {
         }
     }
     fn update(&mut self) {
+        // TODO: GET CHARGE LIMIT, TIME TO FULL, TIME TO EMPTY, ETC...
         match fs::read_to_string(self.syspath.clone() + "/charge_now") {
             Ok(v) => match v.trim().parse::<i64>() {
                 Ok(charge) => {
@@ -94,6 +96,7 @@ impl BatteryListener {
     }
 
     async fn new() -> Arc<Self> {
+        trace!("BatterListener::new");
         let instance = Arc::new(Self {
             controls: Mutex::new(Vec::new()),
             batteries: Mutex::new(HashMap::new()),
@@ -135,7 +138,9 @@ impl BatteryListener {
             task::block_on(async { listener_barrier.wait().await });
 
             loop {
-                poll.poll(&mut events, None).unwrap();
+                if let Err(_) = poll.poll(&mut events, None) {
+                    continue;
+                }
                 for event in event_monitor.iter() {
                     log::info!("{:#?}", event);
                     if let Some(power_supply_type) =
@@ -213,9 +218,8 @@ impl BatteryListener {
         // TODO: Make a loop which executes every N seconds and asks all of the batteries and mains to update their status. Then update the controls.
         // This should also wake up anytime a batter or mains is inserted / removed.
         let me = instance.clone();
-        glib::spawn_future_local(async move {
+        glib::spawn_future(async move {
             loop {
-                log::error!("Looping");
                 let mut batteries = me.batteries.lock().await;
                 batteries.values_mut().for_each(|battery| battery.update());
 
@@ -230,7 +234,7 @@ impl BatteryListener {
                     .last()
                     .map(|battery| battery.time_to_empty);
 
-                log::error!("Charge: {}", charge);
+                log::trace!("Charge: {}", charge);
 
                 let mut controls = me.controls.lock().await;
 
@@ -341,7 +345,7 @@ impl ObjectImpl for BatteryInfoImpl {
             .unwrap();
 
         let weak_me: SendWeakRef<BatteryInfo> = self.obj().downgrade().into();
-        task::block_on(async move {
+        task::spawn(async move {
             BatteryListener::instance()
                 .await
                 .register_control(weak_me)

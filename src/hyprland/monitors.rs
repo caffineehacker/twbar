@@ -2,7 +2,7 @@ use async_std::{
     sync::{Arc, Mutex, Weak},
     task,
 };
-use log::error;
+use log::{error, trace};
 use serde::Deserialize;
 
 use super::{
@@ -64,14 +64,14 @@ impl HyprlandMonitors {
         match mutex_guard.upgrade() {
             Some(instance) => instance,
             None => {
-                let instance = Self::new().await;
+                let instance = Self::new();
                 *mutex_guard = Arc::downgrade(&instance);
                 instance
             }
         }
     }
 
-    async fn new() -> Arc<Self> {
+    fn new() -> Arc<Self> {
         let monitors = Arc::new(LatestEventValue::new());
 
         let instance = Arc::new(Self {
@@ -101,9 +101,11 @@ impl HyprlandMonitors {
     }
 
     pub async fn force_refresh(&self) {
+        trace!("In monitors::force_refresh");
         self.monitors
             .update_fn(|_| {
                 task::block_on(async {
+                    trace!("In monitors::force_refresh - sending monitors command");
                     let monitors = HyprlandCommands::send_command("j/monitors").await;
                     let deserialized = serde_json::from_str::<Vec<HyprlandMonitor>>(&monitors);
                     if deserialized.is_err() {
@@ -114,6 +116,7 @@ impl HyprlandMonitors {
                         );
                         return None;
                     }
+                    trace!("In monitors::force_refresh - finished");
 
                     Some(deserialized.unwrap())
                 })

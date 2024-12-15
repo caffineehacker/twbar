@@ -7,6 +7,7 @@ use async_std::{sync::Mutex, task};
 use gdk4_wayland::{WaylandDisplay, WaylandMonitor};
 use gio::prelude::Cast;
 use gtk4::gdk::{Display, Monitor};
+use log::trace;
 use wayland_client::{
     globals::{registry_queue_init, GlobalListContents},
     protocol::wl_registry::WlRegistry,
@@ -33,6 +34,7 @@ impl GtkOutputs {
         match mutex_guard.upgrade() {
             Some(instance) => instance,
             None => {
+                trace!("Creating GtkOutputs");
                 let instance = Arc::new(Self::new());
                 *mutex_guard = Arc::downgrade(&instance);
                 instance
@@ -60,19 +62,26 @@ impl GtkOutputs {
     }
 
     pub async fn get_name(&self, monitor: &Monitor) -> Result<String, Box<dyn Error>> {
-        let (name_sender, mut name_receiver) = async_broadcast::broadcast(1);
+        trace!("In get_name");
+        let name = Arc::new(Mutex::new("".to_owned()));
 
         let wayland_monitor: &WaylandMonitor = monitor.dynamic_cast_ref().unwrap();
         let mut queue = self.queue.lock().await;
         self.output_manager.get_xdg_output(
             &wayland_monitor.wl_output().unwrap(),
             &queue.handle(),
-            name_sender,
+            name.clone(),
         );
+
+        trace!("About to roundtrip");
 
         queue.roundtrip(&mut GtkOutputsQueue {})?;
 
-        Ok(name_receiver.recv_direct().await?)
+        trace!("Roundtrip complete");
+
+        let name = name.lock().await;
+        trace!("Returning name: {}", name);
+        Ok((*name).clone())
     }
 }
 
@@ -100,19 +109,22 @@ impl Dispatch<zxdg_output_manager_v1::ZxdgOutputManagerV1, ()> for GtkOutputsQue
     }
 }
 
-impl Dispatch<zxdg_output_v1::ZxdgOutputV1, async_broadcast::Sender<String>> for GtkOutputsQueue {
+impl Dispatch<zxdg_output_v1::ZxdgOutputV1, Arc<Mutex<String>>> for GtkOutputsQueue {
     fn event(
         _state: &mut Self,
         proxy: &zxdg_output_v1::ZxdgOutputV1,
         event: <zxdg_output_v1::ZxdgOutputV1 as Proxy>::Event,
-        data: &async_broadcast::Sender<String>,
+        data: &Arc<Mutex<String>>,
         _conn: &Connection,
         _qhandle: &wayland_client::QueueHandle<Self>,
     ) {
         if let zxdg_output_v1::Event::Name { name } = event {
             task::block_on(async {
-                data.broadcast_direct(name).await.unwrap();
+                trace!("Got name: {}", name);
+                *data.lock().await = name;
+                trace!("Unsubscribing from output");
                 proxy.destroy();
+                trace!("Unsubscribed from output");
             });
         }
     }

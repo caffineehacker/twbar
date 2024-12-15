@@ -59,6 +59,7 @@ fn power_button() -> gtk::Widget {
 }
 
 fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> ApplicationWindow {
+    trace!("In bar_window");
     let window = ApplicationWindow::new(app);
 
     window.init_layer_shell();
@@ -75,31 +76,45 @@ fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> Applicat
     window.set_default_height(1);
 
     let connector = connector.to_owned();
+    trace!("bar_window - about to spawn future local");
     glib::spawn_future_local(clone!(
         #[strong]
         window,
         async move {
+            trace!("In bar_window - future_local");
             let hyprland_monitors = HyprlandMonitors::instance().await;
+            trace!("bar_window - future local - hyprland monitors have instance");
             let mut monitors_emitter = hyprland_monitors.get_monitor_state_emitter();
+            trace!("bar_window - future local - hyprland monitors have state emitter");
             let monitors = monitors_emitter.next().await;
+            trace!("bar_window - future local - have monitors");
             let hyprland_monitor = monitors
                 .iter()
                 .find(|m| m.name == connector)
                 .unwrap_or_else(|| panic!("Failed to find monitor match {}", connector));
+            trace!("bar_window - future local - found monitor match");
 
             let left_box = gtk::Box::new(Orientation::Horizontal, 8);
             left_box.set_halign(Align::Start);
+            trace!("bar_window - future local - adding wofi button");
             left_box.append(&launch_wofi_button());
+            trace!("bar_window - future local - adding power button");
             left_box.append(&power_button());
+            trace!("bar_window - future local - adding workspaces widget");
             left_box.append(&widgets::workspaces::Workspaces::new(hyprland_monitor.id));
 
             let center_box = gtk::Box::new(Orientation::Horizontal, 8);
+            trace!("bar_window - future local - adding taskbar widget");
             center_box.append(&widgets::taskbar::Taskbar::new(hyprland_monitor.id));
 
             let right_box = gtk::Box::new(Orientation::Horizontal, 8);
+            trace!("bar_window - future local - adding cpu widget");
             right_box.append(&widgets::cpu_usage::CpuUsage::new());
+            trace!("bar_window - future local - adding ram widget");
             right_box.append(&widgets::ram_usage::RamUsage::new());
+            trace!("bar_window - future local - adding battery info widget");
             right_box.append(&widgets::battery_info::BatteryInfo::new());
+            trace!("bar_window - future local - all widgets added");
 
             let hbox = gtk::CenterBox::new();
             hbox.set_start_widget(Some(&left_box));
@@ -117,8 +132,11 @@ fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> Applicat
                 #[weak]
                 label,
                 async move {
+                    trace!("bar_window - future local - future local");
                     let events = HyprlandEvents::instance().await;
+                    trace!("bar_window - future local - future local - have events instance");
                     let mut active_window_stream = events.get_active_window_emitter();
+                    trace!("bar_window - future local - future local - have active window stream");
 
                     loop {
                         let active_window = active_window_stream.next().await;
@@ -126,6 +144,7 @@ fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> Applicat
                     }
                 }
             ));
+            trace!("bar_window - future local - setting window visible");
             window.set_visible(true);
         }
     ));
@@ -176,11 +195,10 @@ fn activate(app: &Application) {
                         async move {
                             trace!("Monitors changed");
                             let mut windows = windows.borrow_mut();
-                            let monitor_names = futures::future::join_all((0..monitors.n_items())
-                                .map(|index| {
+                            let monitor_names =
+                                futures::future::join_all((0..monitors.n_items()).map(|index| {
                                     let gdk_monitor = monitors.item(index).unwrap();
-                                    let gdk_monitor: Monitor =
-                                        gdk_monitor.dynamic_cast().unwrap();
+                                    let gdk_monitor: Monitor = gdk_monitor.dynamic_cast().unwrap();
                                     let gtk_outputs = gtk_outputs.clone();
                                     async move {
                                         if let Some(gdk_connector) =
@@ -188,19 +206,21 @@ fn activate(app: &Application) {
                                         {
                                             Some((gdk_monitor.clone(), gdk_connector))
                                         } else {
-                                            let output_name = gtk_outputs.get_name(&gdk_monitor).await;
+                                            let output_name =
+                                                gtk_outputs.get_name(&gdk_monitor).await;
                                             if output_name.is_err() {
-                                                return None;
+                                                None
+                                            } else {
+                                                Some((gdk_monitor.clone(), output_name.unwrap()))
                                             }
-                                            Some((
-                                                gdk_monitor.clone(),
-                                                output_name.unwrap(),
-                                            ))
                                         }
                                     }
-                                })).await.into_iter()
+                                }))
+                                .await
+                                .into_iter()
                                 .filter_map(|x| x)
                                 .collect::<Vec<(Monitor, String)>>();
+                            trace!("Monitors: {:?}", monitor_names);
                             // First remove any windows that are not in the new list
                             'windows_loop: for (connector, window) in windows.clone().iter() {
                                 for (_, name) in monitor_names.iter() {
@@ -211,7 +231,10 @@ fn activate(app: &Application) {
                                 }
 
                                 if let Some(window) = window.upgrade() {
-                                    trace!(monitor_connector = connector.as_str(); "Closing window due to monitor removal");
+                                    trace!(
+                                        "Closing window due to monitor removal: {}",
+                                        connector.as_str()
+                                    );
                                     window.close();
                                 }
                                 windows.remove(connector.as_str());
@@ -220,7 +243,7 @@ fn activate(app: &Application) {
                             // Now add new monitors
                             for (monitor, name) in monitor_names.iter() {
                                 if !windows.contains_key(name) {
-                                    trace!(monitor_name = name.as_str(); "New monitor found");
+                                    trace!("New monitor found: {}", name.as_str());
                                     windows.insert(
                                         name.clone(),
                                         bar_window(&app, monitor, name).downgrade(),
@@ -240,6 +263,7 @@ fn activate(app: &Application) {
 #[async_std::main]
 async fn main() -> Result<glib::ExitCode, ()> {
     env_logger::init();
+    trace!("Booting app");
 
     let app = Application::builder()
         .application_id("com.timwaterhouse.twbar")

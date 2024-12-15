@@ -477,6 +477,13 @@ impl<T: Clone> LatestEventValueListener<T> {
     }
 
     pub async fn next(&mut self) -> T {
+        if let Some(guard) = self.data.current_value.try_lock() {
+            if self.last_seen_iteration != guard.0 {
+                self.last_seen_iteration = guard.0;
+                return guard.1.clone();
+            }
+        }
+
         let guard = self
             .data
             .trigger
