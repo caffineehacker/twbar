@@ -23,6 +23,7 @@ wayland-protocols = { version = "0.32", features = ["client", "staging", "unstab
 futures = "*"
 udev = "0.9"
 mio = { version = "1", features = ["os-poll", "os-ext"] }
+chrono = { version = "0.4", features = ["clock"] }
 
 [dependencies.async-std]
 version = "*"

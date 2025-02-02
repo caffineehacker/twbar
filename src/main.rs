@@ -115,6 +115,7 @@ fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> Applicat
             trace!("bar_window - future local - adding battery info widget");
             right_box.append(&widgets::battery_info::BatteryInfo::new());
             trace!("bar_window - future local - all widgets added");
+            right_box.append(&widgets::clock::Clock::new());
 
             let hbox = gtk::CenterBox::new();
             hbox.set_start_widget(Some(&left_box));

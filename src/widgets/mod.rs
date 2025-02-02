@@ -1,4 +1,5 @@
 pub mod battery_info;
+pub mod clock;
 pub mod command_button;
 pub mod cpu_usage;
 pub mod ram_usage;
