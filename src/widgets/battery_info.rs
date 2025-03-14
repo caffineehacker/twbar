@@ -147,7 +147,7 @@ impl BatteryListener {
                         event.device().property_value("POWER_SUPPLY_TYPE")
                     {
                         if power_supply_type == "Battery" {
-                            if let Some(me) = weak_me.upgrade() {
+                            match weak_me.upgrade() { Some(me) => {
                                 let device = event.device();
                                 let sys_path = device.syspath().to_string_lossy();
                                 let mut batteries_lock = task::block_on(me.batteries.lock());
@@ -157,11 +157,11 @@ impl BatteryListener {
                                         BatteryData::new(sys_path.to_owned().to_string()),
                                     );
                                 }
-                            } else {
+                            } _ => {
                                 return;
-                            }
+                            }}
                         } else if power_supply_type == "Mains" {
-                            if let Some(me) = weak_me.upgrade() {
+                            match weak_me.upgrade() { Some(me) => {
                                 let device = event.device();
                                 let sys_path = device.syspath().to_string_lossy();
                                 let mut mains_lock = task::block_on(me.mains.lock());
@@ -171,9 +171,9 @@ impl BatteryListener {
                                         MainsData::new(sys_path.to_owned().to_string()),
                                     );
                                 }
-                            } else {
+                            } _ => {
                                 return;
-                            }
+                            }}
                         }
                     }
                 }

@@ -1,7 +1,7 @@
 [package]
 name = "twbar"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 # Even though we don't depend on wayland-sys directly, we need to use dlopen so we don't

@@ -202,11 +202,10 @@ fn activate(app: &Application) {
                                     let gdk_monitor: Monitor = gdk_monitor.dynamic_cast().unwrap();
                                     let gtk_outputs = gtk_outputs.clone();
                                     async move {
-                                        if let Some(gdk_connector) =
-                                            gdk_monitor.connector().map(|c| c.as_str().to_owned())
-                                        {
+                                        match gdk_monitor.connector().map(|c| c.as_str().to_owned())
+                                        { Some(gdk_connector) => {
                                             Some((gdk_monitor.clone(), gdk_connector))
-                                        } else {
+                                        } _ => {
                                             let output_name =
                                                 gtk_outputs.get_name(&gdk_monitor).await;
                                             if output_name.is_err() {
@@ -214,7 +213,7 @@ fn activate(app: &Application) {
                                             } else {
                                                 Some((gdk_monitor.clone(), output_name.unwrap()))
                                             }
-                                        }
+                                        }}
                                     }
                                 }))
                                 .await
