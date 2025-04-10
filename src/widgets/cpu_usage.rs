@@ -7,15 +7,15 @@ use async_std::sync::{Mutex, Weak};
 use async_std::task::{self, sleep};
 use async_std::{fs::File, io::ReadExt};
 
-use gio::glib::{clone, SendWeakRef, WeakRef};
+use gio::glib::{SendWeakRef, WeakRef, clone};
 use gio::prelude::*;
 use gtk4::glib::Object;
 use gtk4::subclass::prelude::*;
 use gtk4::{
-    glib, Accessible, Buildable, ConstraintTarget, EventControllerMotion, Orientable, Popover,
-    Widget,
+    Accessible, Buildable, ConstraintTarget, EventControllerMotion, Orientable, Popover, Widget,
+    glib,
 };
-use gtk4::{prelude::*, Label};
+use gtk4::{Label, prelude::*};
 
 #[allow(dead_code)]
 struct CpuStat {
@@ -114,7 +114,7 @@ impl CpuStatMonitor {
                         log::error!("Failed to read cpu info: {}", e);
                     }
                     Ok(cpu_info) => {
-                        if prev_cpu_info.len() == cpu_info.len() && cpu_info.len() > 0 {
+                        if prev_cpu_info.len() == cpu_info.len() && !cpu_info.is_empty() {
                             let diffs: Vec<CpuStatDiff> = prev_cpu_info
                                 .iter()
                                 .zip(cpu_info.iter())
@@ -130,19 +130,19 @@ impl CpuStatMonitor {
                                 .collect();
 
                             let mut tooltip_text = "".to_owned();
-                            let label_text = if diffs.len() > 0 {
+                            let label_text = if !diffs.is_empty() {
                                 format!("   {}%", diffs[0].percent_usage)
                             } else {
                                 "No diffs".to_owned()
                             };
-                            for i in 0..diffs.len() {
+                            for (i, diff) in diffs.iter().enumerate() {
                                 if i == 0 {
                                     tooltip_text
-                                        .push_str(&format!("Total: {}%", diffs[i].percent_usage));
+                                        .push_str(&format!("Total: {}%", diff.percent_usage));
                                 } else {
                                     tooltip_text.push_str(&format!(
                                         "\nCore {}: {}%",
-                                        i, diffs[i].percent_usage
+                                        i, diff.percent_usage
                                     ));
                                 }
                             }
@@ -207,9 +207,8 @@ impl CpuUsageImpl {
             Some(label) => label.set_text(popup_text),
             None => {
                 log::trace!("Popup label upgrade failed");
-                return;
             }
-        };
+        }
     }
 }
 
@@ -287,6 +286,12 @@ glib::wrapper! {
     pub struct CpuUsage(ObjectSubclass<CpuUsageImpl>)
         @extends gtk4::Box, Widget,
         @implements Accessible, Buildable, ConstraintTarget, Orientable;
+}
+
+impl Default for CpuUsage {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CpuUsage {

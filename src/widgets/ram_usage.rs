@@ -134,9 +134,8 @@ impl RamUsageImpl {
             Some(label) => label.set_text(popup_text),
             None => {
                 log::trace!("Popup label upgrade failed");
-                return;
             }
-        };
+        }
     }
 }
 
@@ -209,6 +208,12 @@ glib::wrapper! {
     pub struct RamUsage(ObjectSubclass<RamUsageImpl>)
         @extends gtk4::Box, Widget,
         @implements Accessible, Buildable, ConstraintTarget, Orientable;
+}
+
+impl Default for RamUsage {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RamUsage {

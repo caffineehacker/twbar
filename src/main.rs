@@ -1,16 +1,15 @@
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::sync::Arc;
-
 use glib::clone;
+use gtk_output::GtkOutputs;
 use gtk4::gdk::{Display, Monitor};
 use gtk4::prelude::DisplayExt;
 use gtk4::{self as gtk, Align, CssProvider, DebugFlags, Label, Orientation};
-use gtk4::{glib, prelude::*};
 use gtk4::{Application, ApplicationWindow};
+use gtk4::{glib, prelude::*};
 use gtk4_layer_shell::{Edge, Layer, LayerShell};
-use gtk_output::GtkOutputs;
 use log::trace;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::sync::Arc;
 use widgets::command_button::ButtonCommand;
 
 mod gtk_output;
@@ -195,7 +194,6 @@ fn activate(app: &Application) {
                         gtk_outputs,
                         async move {
                             trace!("Monitors changed");
-                            let mut windows = windows.borrow_mut();
                             let monitor_names =
                                 futures::future::join_all((0..monitors.n_items()).map(|index| {
                                     let gdk_monitor = monitors.item(index).unwrap();
@@ -203,25 +201,29 @@ fn activate(app: &Application) {
                                     let gtk_outputs = gtk_outputs.clone();
                                     async move {
                                         match gdk_monitor.connector().map(|c| c.as_str().to_owned())
-                                        { Some(gdk_connector) => {
-                                            Some((gdk_monitor.clone(), gdk_connector))
-                                        } _ => {
-                                            let output_name =
-                                                gtk_outputs.get_name(&gdk_monitor).await;
-                                            if output_name.is_err() {
-                                                None
-                                            } else {
-                                                Some((gdk_monitor.clone(), output_name.unwrap()))
+                                        {
+                                            Some(gdk_connector) => {
+                                                Some((gdk_monitor.clone(), gdk_connector))
                                             }
-                                        }}
+                                            _ => {
+                                                let output_name =
+                                                    gtk_outputs.get_name(&gdk_monitor).await;
+                                                if let Ok(name) = output_name {
+                                                    Some((gdk_monitor.clone(), name))
+                                                } else {
+                                                    None
+                                                }
+                                            }
+                                        }
                                     }
                                 }))
                                 .await
                                 .into_iter()
-                                .filter_map(|x| x)
+                                .flatten()
                                 .collect::<Vec<(Monitor, String)>>();
                             trace!("Monitors: {:?}", monitor_names);
                             // First remove any windows that are not in the new list
+                            let mut windows = windows.borrow_mut();
                             'windows_loop: for (connector, window) in windows.clone().iter() {
                                 for (_, name) in monitor_names.iter() {
                                     if *name == *connector {

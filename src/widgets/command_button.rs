@@ -119,7 +119,7 @@ impl CommandButton {
     pub fn new(label: &str, commands: Vec<ButtonCommand>) -> Self {
         Object::builder()
             .property("label", label)
-            .property("commands", Commands { commands: commands })
+            .property("commands", Commands { commands })
             .build()
     }
 }

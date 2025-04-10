@@ -1,18 +1,15 @@
 use async_std::task::sleep;
-use std::cell::OnceCell;
 use std::time::Duration;
 
 use chrono::Local;
 use gio::glib::clone;
-use gio::prelude::*;
-use gtk4::glib::{Object, Properties};
+use gtk4::glib::Object;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-use gtk4::{glib, Accessible, Buildable, ConstraintTarget, Orientable, Widget};
+use gtk4::{Accessible, Buildable, ConstraintTarget, Orientable, Widget, glib};
 
 // Object holding the state
-#[derive(Default, Properties)]
-#[properties(wrapper_type = Clock)]
+#[derive(Default)]
 pub struct ClockImpl {}
 
 // The central trait for subclassing a GObject
@@ -24,7 +21,6 @@ impl ObjectSubclass for ClockImpl {
 }
 
 // Trait shared by all GObjects
-#[glib::derived_properties]
 impl ObjectImpl for ClockImpl {
     fn constructed(&self) {
         self.parent_constructed();
@@ -36,8 +32,6 @@ impl ObjectImpl for ClockImpl {
         self.obj().set_spacing(0);
 
         glib::spawn_future_local(clone!(
-            #[weak(rename_to = me)]
-            self,
             #[weak]
             label,
             async move {
@@ -62,6 +56,12 @@ glib::wrapper! {
     pub struct Clock(ObjectSubclass<ClockImpl>)
         @extends gtk4::Box, Widget,
         @implements Accessible, Buildable, ConstraintTarget, Orientable;
+}
+
+impl Default for Clock {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Clock {

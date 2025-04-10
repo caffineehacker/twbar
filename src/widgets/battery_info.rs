@@ -1,31 +1,28 @@
 use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::fs::{self};
-use std::io::Error;
 use std::os::fd::{AsFd, AsRawFd};
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
-use async_std::channel;
 use async_std::sync::{Arc, Barrier, Mutex, Weak};
 use async_std::task::{self, sleep};
-use async_std::{fs::File, io::ReadExt};
 
 use gio::glib::clone::Downgrade;
-use gio::glib::{clone, SendWeakRef, WeakRef};
+use gio::glib::{SendWeakRef, WeakRef, clone};
 use gio::prelude::*;
 use gtk4::glib::Object;
 use gtk4::subclass::prelude::*;
 use gtk4::{
-    glib, Accessible, Buildable, ConstraintTarget, EventControllerMotion, Orientable, Popover,
-    Widget,
+    Accessible, Buildable, ConstraintTarget, EventControllerMotion, Orientable, Popover, Widget,
+    glib,
 };
-use gtk4::{prelude::*, Label};
+use gtk4::{Label, prelude::*};
 use log::trace;
 use mio::unix::SourceFd;
 use mio::{Events, Interest, Poll, Token};
-use udev::{Device, Enumerator, MonitorBuilder};
+use udev::{Enumerator, MonitorBuilder};
 
 struct BatteryData {
     syspath: String,
@@ -59,6 +56,7 @@ impl BatteryData {
     }
 }
 
+#[allow(dead_code)]
 struct MainsData {
     syspath: String,
     present: bool,
@@ -138,7 +136,7 @@ impl BatteryListener {
             task::block_on(async { listener_barrier.wait().await });
 
             loop {
-                if let Err(_) = poll.poll(&mut events, None) {
+                if poll.poll(&mut events, None).is_err() {
                     continue;
                 }
                 for event in event_monitor.iter() {
@@ -147,33 +145,33 @@ impl BatteryListener {
                         event.device().property_value("POWER_SUPPLY_TYPE")
                     {
                         if power_supply_type == "Battery" {
-                            match weak_me.upgrade() { Some(me) => {
-                                let device = event.device();
-                                let sys_path = device.syspath().to_string_lossy();
-                                let mut batteries_lock = task::block_on(me.batteries.lock());
-                                if !batteries_lock.contains_key(&sys_path.to_string()) {
-                                    batteries_lock.insert(
-                                        sys_path.to_string(),
-                                        BatteryData::new(sys_path.to_owned().to_string()),
-                                    );
+                            match weak_me.upgrade() {
+                                Some(me) => {
+                                    let device = event.device();
+                                    let sys_path = device.syspath().to_string_lossy();
+                                    let mut batteries_lock = task::block_on(me.batteries.lock());
+                                    batteries_lock
+                                        .entry(sys_path.to_string())
+                                        .or_insert_with(|| BatteryData::new(sys_path.to_string()));
                                 }
-                            } _ => {
-                                return;
-                            }}
+                                _ => {
+                                    return;
+                                }
+                            }
                         } else if power_supply_type == "Mains" {
-                            match weak_me.upgrade() { Some(me) => {
-                                let device = event.device();
-                                let sys_path = device.syspath().to_string_lossy();
-                                let mut mains_lock = task::block_on(me.mains.lock());
-                                if !mains_lock.contains_key(&sys_path.to_string()) {
-                                    mains_lock.insert(
-                                        sys_path.to_string(),
-                                        MainsData::new(sys_path.to_owned().to_string()),
-                                    );
+                            match weak_me.upgrade() {
+                                Some(me) => {
+                                    let device = event.device();
+                                    let sys_path = device.syspath().to_string_lossy();
+                                    let mut mains_lock = task::block_on(me.mains.lock());
+                                    mains_lock
+                                        .entry(sys_path.to_string())
+                                        .or_insert_with(|| MainsData::new(sys_path.to_string()));
                                 }
-                            } _ => {
-                                return;
-                            }}
+                                _ => {
+                                    return;
+                                }
+                            }
                         }
                     }
                 }
@@ -258,13 +256,13 @@ impl BatteryListener {
         instance
     }
 
+    #[allow(dead_code)]
     fn refresh_batteries(&self) {
         let mut batteries = Vec::new();
         let mut mains = Vec::new();
         for dir in Path::new("/sys/class/power_supply")
             .read_dir()
             .unwrap()
-            .into_iter()
             .filter_map(|entry| entry.ok())
             .filter(|entry| entry.file_type().unwrap().is_dir())
         {
@@ -307,9 +305,8 @@ impl BatteryInfoImpl {
             Some(label) => label.set_text(popup_text),
             None => {
                 log::trace!("Popup label upgrade failed");
-                return;
             }
-        };
+        }
     }
 }
 
@@ -387,6 +384,12 @@ glib::wrapper! {
     pub struct BatteryInfo(ObjectSubclass<BatteryInfoImpl>)
         @extends gtk4::Box, Widget,
         @implements Accessible, Buildable, ConstraintTarget, Orientable;
+}
+
+impl Default for BatteryInfo {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BatteryInfo {

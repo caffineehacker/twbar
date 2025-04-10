@@ -3,17 +3,17 @@ use std::{
     ops::DerefMut,
 };
 
-use async_broadcast::{broadcast, InactiveReceiver, Receiver, Sender};
+use async_broadcast::{InactiveReceiver, Receiver, Sender, broadcast};
 use async_std::{
     sync::{Arc, Mutex, RwLock, Weak},
     task,
 };
 use log::{debug, trace};
 use wayland_client::{
+    Connection, Dispatch, Proxy, QueueHandle,
     backend::ObjectId,
     event_created_child,
     protocol::{wl_output::WlOutput, wl_registry},
-    Connection, Dispatch, Proxy, QueueHandle,
 };
 use wayland_protocols::ext::foreign_toplevel_list::v1::client::{
     ext_foreign_toplevel_handle_v1::{self, ExtForeignToplevelHandleV1},
@@ -75,6 +75,7 @@ pub struct WaylandManager {
     outputs_state: Arc<RwLock<HashMap<ObjectId, Output>>>,
 }
 
+#[allow(dead_code)]
 impl WaylandManager {
     pub async fn instance() -> Arc<Self> {
         static INSTANCE: Mutex<Weak<WaylandManager>> = Mutex::new(Weak::new());
