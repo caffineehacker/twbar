@@ -24,10 +24,19 @@ use mio::unix::SourceFd;
 use mio::{Events, Interest, Poll, Token};
 use udev::{Enumerator, MonitorBuilder};
 
+enum BatteryStatus {
+    Unknown,
+    Charging,
+    Draining,
+    Full,
+}
+
 struct BatteryData {
     syspath: String,
     charge: i64,
+    charge_full_design: i64,
     time_to_empty: i64,
+    status: BatteryStatus,
 }
 
 impl BatteryData {
@@ -35,7 +44,9 @@ impl BatteryData {
         BatteryData {
             syspath,
             charge: -1,
+            charge_full_design: -1,
             time_to_empty: -1,
+            status: BatteryStatus::Unknown,
         }
     }
     fn update(&mut self) {
@@ -51,6 +62,31 @@ impl BatteryData {
             },
             Err(_) => {
                 log::error!("{}: failed to read charge", self.syspath);
+            }
+        };
+        match fs::read_to_string(self.syspath.clone() + "/charge_full_design") {
+            Ok(v) => match v.trim().parse::<i64>() {
+                Ok(charge_full_design) => {
+                    self.charge_full_design = charge_full_design;
+                }
+                Err(err) => {
+                    log::error!("Failed to parse: {}, {}", v, err);
+                }
+            },
+            Err(_) => {
+                log::error!("{}: failed to read charge full design", self.syspath);
+            }
+        };
+        match fs::read_to_string(self.syspath.clone() + "/status") {
+            Ok(v) => {
+                self.status = match v.as_str() {
+                    "Charging" => BatteryStatus::Full,
+                    "Draining" => BatteryStatus::Draining,
+                    _ => BatteryStatus::Unknown,
+                }
+            }
+            Err(_) => {
+                log::error!("{}: failed to read charge full design", self.syspath);
             }
         };
     }
@@ -226,6 +262,10 @@ impl BatteryListener {
                     .map(|battery| battery.charge)
                     .sum::<i64>()
                     / (batteries.len() as i64);
+                let charge_full_design: i64 = batteries
+                    .values()
+                    .map(|battery| battery.charge_full_design)
+                    .sum::<i64>();
                 let time_to_empty = batteries
                     .values()
                     .take(1)
@@ -240,7 +280,10 @@ impl BatteryListener {
                     match control.upgrade() {
                         Some(control) => {
                             control.imp().update_labels(
-                                &format!("   {}%", charge as i64),
+                                &format!(
+                                    "   {:.2}%",
+                                    (charge as f64) / (charge_full_design as f64) * 100.0
+                                ),
                                 &format!("Time to charge: {}", time_to_empty.unwrap_or(0),),
                             );
                         }
