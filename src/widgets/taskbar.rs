@@ -2,11 +2,12 @@ use std::cell::{OnceCell, RefCell};
 use std::collections::HashMap;
 
 use gio::glib::clone;
+use gio::glib::property::PropertySet;
 use gio::prelude::*;
 use gtk4::glib::{Object, Properties};
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-use gtk4::{glib, Accessible, Buildable, ConstraintTarget, Orientable, Widget};
+use gtk4::{Accessible, Buildable, ConstraintTarget, Orientable, Widget, glib};
 use log::trace;
 
 use crate::hyprland::events::{HyprlandEvent, HyprlandEvents};

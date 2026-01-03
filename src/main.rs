@@ -64,7 +64,7 @@ fn bar_window(app: &Application, monitor: &Monitor, connector: &str) -> Applicat
     window.init_layer_shell();
     window.set_layer(Layer::Top);
     window.auto_exclusive_zone_enable();
-    window.set_monitor(monitor);
+    window.set_monitor(Some(monitor));
     // We use this for the interactive UI debugger since we need ctrl+shift+I to open it.
     window.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::OnDemand);
 

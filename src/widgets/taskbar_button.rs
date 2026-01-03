@@ -1,14 +1,15 @@
 use std::cell::RefCell;
 
 use gio::glib::clone;
+use gio::glib::property::PropertySet;
 use gio::prelude::*;
 use gtk4::glib::{Object, Properties};
 use gtk4::subclass::prelude::*;
 use gtk4::{
-    glib, Accessible, Actionable, Buildable, Button, ConstraintTarget, EventControllerMotion,
-    Label, Popover, Widget,
+    Accessible, Actionable, Buildable, Button, ConstraintTarget, EventControllerMotion, Label,
+    Popover, Widget, glib,
 };
-use gtk4::{prelude::*, Orientation};
+use gtk4::{Orientation, prelude::*};
 use log::trace;
 
 use crate::hyprland::commands::HyprlandCommands;
